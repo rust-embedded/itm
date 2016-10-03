@@ -1,0 +1,12 @@
+[package]
+authors = ["Jorge Aparicio <japaricious@gmail.com>"]
+description = "Tool to parse and dump ITM packets"
+documentation = "https://docs.rs/itm"
+keywords = ["parse", "tool", "ARM", "ITM"]
+license = "MIT OR Apache-2.0"
+name = "itm"
+repository = "https://github.com/japaric/itm"
+version = "0.1.0"
+
+[dependencies]
+ref_slice = "1.1.0"
