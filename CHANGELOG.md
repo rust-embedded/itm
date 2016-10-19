@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `itmdump` no longer depends on the `mkfifo` command.
+
 ## v0.1.0 - 2016-10-03
 
 ### Added
