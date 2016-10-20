@@ -1,0 +1,85 @@
+cache: cargo
+dist: trusty
+language: generic
+language: rust
+rust: stable
+services: docker
+sudo: required
+
+env:
+  global:
+    - CRATE_NAME=itm
+    - DEPLOY_VERSION=stable
+    - TARGET=x86_64-unknown-linux-gnu
+
+matrix:
+  include:
+    # OSX
+    - env: TARGET=i686-apple-darwin
+      os: osx
+    - env: TARGET=x86_64-apple-darwin
+      os: osx
+
+    # Linux
+    - env: TARGET=i686-unknown-linux-gnu
+    - env: TARGET=i686-unknown-linux-musl
+    # This target is handled by the default build job
+    # - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-musl
+
+install:
+  # curl: cargo + rustc
+  # case: rust-std
+  - if [ -z $TRAVIS_TAG ] || [ $TRAVIS_RUST_VERSION = $DEPLOY_VERSION ]; then
+      curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=$TRAVIS_RUST_VERSION -y;
+      source ~/.cargo/env;
+      case $TARGET in
+        x86_64-apple-darwin | x86_64-unknown-linux-gnu) ;;
+        *) rustup target add $TARGET ;;
+      esac;
+    fi
+
+script:
+  # chmod: Travis can't cache files that are not readable by "others"
+  - if [ -z $TRAVIS_TAG ] || [ $TRAVIS_RUST_VERSION = $DEPLOY_VERSION ]; then
+      cargo generate-lockfile;
+
+      if [[ $TRAVIS_OS_NAME = linux ]]; then
+        sh ci/run-docker.sh $TARGET || exit 1;
+      else
+        sh ci/run.sh || exit 1;
+      fi;
+
+      chmod -R a+r $HOME/.cargo;
+    fi
+
+before_deploy:
+  - sh ci/package.sh $TARGET
+
+deploy:
+  provider: releases
+  api_key:
+    secure: Muel87WKuZAv4Fc1QRc4LF2OQpbfdCkvZupA1ik/mBEHxbr8qpBJDLbq1BgNo6XB6RFjOglPEsf1yhxMwMdaNVymQOTTEbMZ29FAsthoH5F/PPpuMWTRB1DXqvwT9AzTaQhKmT1u4ZSxPpLqAOV0tT5Tdm3grSRt9UVlvSBjYo8A+KLWjPVOX88o7MLdbqHWQ8IbeS7nmrhO4eOXk4wgemDLdUPENhrHQb52oetMsaW+W3CZLkyNIYkQAZGpz2Vug1YrZMe+8heGDBuSAPBi0hI5Z9qYNN2Zpcp24XzVrr5KerKNwElPBbx5VyzX2bG1lkyKujRrt3Xl24xf4q0hZLYisTS2Cq5wNbIUvrVGc/y1UQ2sS2NRyVylMi5jryHBmqTc7TLvLrrXP/0SmxO6PeWoKMwcfLIbGmHWqtmp9Qo7hIqruSK6v+myNgUFmbyVsJlsB1Upo3eQ69B4XcG3uOD5kwvzo57lyzLxXDnvQk/v1Ygab8lFBeNr8dBiA3+RTaVblXSFKY1cQlPdg/AzkEXcz6xKda7y3gz530cgxL9f2Kx0YRwi6Bh9jBEA52CHFUF7UDiyPmGE+6rcYhpqIwvZ2nDQwLnxu+pV620ttYoXqK5FYDxPAVWuSe3A/F4KZzgAse0FFg0moOZTcurcrRSQfPT3EVqTO8xZi+Ou+kw= 
+  file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
+  # don't delete the target directory
+  skip_cleanup: true
+  on:
+    condition: $TRAVIS_RUST_VERSION = $DEPLOY_VERSION
+    tags: true
+
+cache:
+  directories:
+    - $HOME/.cargo
+    - target
+
+branches:
+  only:
+    # Release tags
+    - /^v\d+\.\d+\.\d+.*$/
+    - auto
+    - try
+
+notifications:
+  email:
+    on_success: never
+  webhooks: https://homu.herokuapp.com/travis
