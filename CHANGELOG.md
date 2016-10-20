@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 
 - `itmdump` no longer depends on the `mkfifo` command.
+- `itmdump`, which normally uses named pipes, now fallbacks to regular files to
+  be work on Windows. 
+- `itmdump` now is restrictive with about the arguments it receives. Before, a
+  second argument would simply be ignored, but, now, that has become a hard
+  error.
+- `itmdump` version output (`-V`) now includes the git commit hash and date.
 
 ## v0.1.0 - 2016-10-03
 

@@ -56,7 +56,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let matches = App::new("itmdump")
-        .version(env!("CARGO_PKG_VERSION"))
+        .version(include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt")))
         .arg(Arg::with_name("PATH").help("Named pipe to use").required(true))
         .get_matches();
 
