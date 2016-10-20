@@ -5,12 +5,20 @@ extern crate ref_slice;
 #[macro_use]
 extern crate error_chain;
 
-use std::ffi::CString;
-use std::fs::File;
 use std::io::{Read, Write};
-use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
-use std::{env, fs, io, process};
+use std::time::Duration;
+use std::{env, fs, io, process, thread};
+
+#[cfg(not(unix))]
+use std::fs::OpenOptions;
+
+#[cfg(unix)]
+use std::ffi::CString;
+#[cfg(unix)]
+use std::fs::File;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStringExt;
 
 use clap::{App, Arg};
 use ref_slice::ref_slice_mut;
@@ -22,6 +30,10 @@ mod errors {
 }
 
 fn main() {
+    fn show_backtrace() -> bool {
+        env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) == Ok("1")
+    }
+
     if let Err(e) = run() {
         let stderr = io::stderr();
         let mut stderr = stderr.lock();
@@ -34,7 +46,6 @@ fn main() {
 
         if show_backtrace() {
             if let Some(backtrace) = e.backtrace() {
-                writeln!(stderr, "backtrace:").ok();
                 writeln!(stderr, "{:?}", backtrace).ok();
             }
         }
@@ -57,20 +68,37 @@ fn run() -> Result<()> {
             .chain_err(|| format!("couldn't remove {}", pipe_)));
     }
 
-    let cpipe = try!(CString::new(pipe.clone().into_os_string().into_vec())
-        .chain_err(|| format!("error converting {} to a C string", pipe_)));
+    let mut stream = match () {
+        #[cfg(unix)]
+        () => {
+            let cpipe =
+                try!(CString::new(pipe.clone().into_os_string().into_vec())
+                     .chain_err(|| {
+                         format!("error converting {} to a C string", pipe_)
+                     }));
 
-    match unsafe { libc::mkfifo(cpipe.as_ptr(), 0o644) } {
-        0 => {}
-        e => {
-            try!(Err(io::Error::from_raw_os_error(e)).chain_err(|| {
-                format!("couldn't create a named pipe in {}", pipe_)
-            }))
+            match unsafe { libc::mkfifo(cpipe.as_ptr(), 0o644) } {
+                0 => {}
+                e => {
+                    try!(Err(io::Error::from_raw_os_error(e)).chain_err(|| {
+                        format!("couldn't create a named pipe in {}", pipe_)
+                    }))
+                }
+            }
+
+            let mut stream = try!(File::open(&pipe)
+                .chain_err(|| format!("couldn't open {}", pipe_)));
         }
-    }
-
-    let mut stream = try!(File::open(&pipe)
-        .chain_err(|| format!("couldn't open {}", pipe_)));
+        #[cfg(not(unix))]
+        () => {
+            try!(OpenOptions::new()
+                 .create(true)
+                 .read(true)
+                 .write(true)
+                 .open(&pipe)
+                 .chain_err(|| format!("couldn't open {}", pipe_)))
+        }
+    };
 
     let mut header = 0;
 
@@ -108,11 +136,14 @@ fn run() -> Result<()> {
                 }
             }
         })() {
-            writeln!(stderr, "error: {}", e).ok();
+            match e.kind() {
+                io::ErrorKind::UnexpectedEof => {
+                    thread::sleep(Duration::from_millis(100));
+                }
+                _ => {
+                    writeln!(stderr, "error: {:?}", e.kind()).ok();
+                }
+            }
         }
     }
-}
-
-fn show_backtrace() -> bool {
-    env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) == Ok("1")
 }
