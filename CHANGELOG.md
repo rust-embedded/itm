@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.1.1] - 2016-10-20
+
 ### Changed
 
 - `itmdump` no longer depends on the `mkfifo` command.
@@ -24,4 +26,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `itmdump` tool that parses instrumentation packets from the stimulus port 0
   and dumps the payload to `stdout`. 
 
-[Unreleased]: https://github.com/japaric/itm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/japaric/itm/compare/v0.1.1...HEAD
+[v0.1.1]: https://github.com/japaric/itm/compare/v0.1.0...v0.1.1
