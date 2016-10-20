@@ -86,8 +86,8 @@ fn run() -> Result<()> {
                 }
             }
 
-            let mut stream = try!(File::open(&pipe)
-                .chain_err(|| format!("couldn't open {}", pipe_)));
+            try!(File::open(&pipe)
+                .chain_err(|| format!("couldn't open {}", pipe_)))
         }
         #[cfg(not(unix))]
         () => {
