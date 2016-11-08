@@ -1,4 +1,3 @@
-[![Build status](https://travis-ci.org/japaric/itm.svg?branch=master)](https://travis-ci.org/japaric/itm)
 [![crates.io](https://img.shields.io/crates/d/itm.svg)](https://crates.io/crates/itm)
 [![crates.io](https://img.shields.io/crates/v/itm.svg)](https://crates.io/crates/itm)
 
