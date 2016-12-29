@@ -20,11 +20,12 @@ impl ItmDump {
     pub fn new() -> ItmDump {
         let td = TempDir::new("itmdump").unwrap();
         let path = td.path().join("fifo");
-        let mut child = Command::new(env::current_exe()
-                .unwrap()
-                .parent()
-                .unwrap()
-                .join("itmdump"))
+        let mut me = env::current_exe().unwrap();
+        me.pop();
+        if me.ends_with("deps") {
+            me.pop();
+        }
+        let mut child = Command::new(me.join("itmdump"))
             .arg(&path)
             .stdout(Stdio::piped())
             .spawn()
