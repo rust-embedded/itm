@@ -57,15 +57,15 @@ fn main() {
         let stderr = io::stderr();
         let mut stderr = stderr.lock();
 
-        writeln!(stderr, "{}", e).ok();
+        writeln!(stderr, "{}", e).unwrap();
 
         for e in e.iter().skip(1) {
-            writeln!(stderr, "caused by: {}", e).ok();
+            writeln!(stderr, "caused by: {}", e).unwrap();
         }
 
         if show_backtrace() {
             if let Some(backtrace) = e.backtrace() {
-                writeln!(stderr, "{:?}", backtrace).ok();
+                writeln!(stderr, "{:?}", backtrace).unwrap();
             }
         }
 
@@ -160,7 +160,7 @@ fn run() -> Result<()> {
                     thread::sleep(Duration::from_millis(100));
                 }
                 _ => {
-                    writeln!(stderr, "error: {:?}", e.kind()).ok();
+                    writeln!(stderr, "error: {:?}", e.kind()).unwrap();
                 }
             }
         }
