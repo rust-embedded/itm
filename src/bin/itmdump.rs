@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 extern crate chrono;
 extern crate clap;
 extern crate env_logger;
