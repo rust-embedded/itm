@@ -121,8 +121,8 @@ fn run() -> Result<()> {
 
     let mut header = 0;
 
-    let (stdout, stderr) = (io::stdout(), io::stderr());
-    let (mut stdout, mut stderr) = (stdout.lock(), stderr.lock());
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
     loop {
         if let Err(e) = (|| {
             try!(stream.read_exact(ref_slice_mut(&mut header)));
@@ -150,7 +150,8 @@ fn run() -> Result<()> {
                     stdout.write_all(&payload)
                 }
                 _ => {
-                    // Not a valid header, skip.
+                    // We don't know this header type, skip.
+                    warn!("Unhandled header type = {:x}", header);
                     Ok(())
                 }
             }
@@ -160,7 +161,7 @@ fn run() -> Result<()> {
                     thread::sleep(Duration::from_millis(100));
                 }
                 _ => {
-                    writeln!(stderr, "error: {:?}", e.kind()).unwrap();
+                    error!("{}", e);
                 }
             }
         }
