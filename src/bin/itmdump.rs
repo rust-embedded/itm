@@ -1,9 +1,12 @@
+extern crate chrono;
 extern crate clap;
-extern crate libc;
-extern crate ref_slice;
-
+extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
+extern crate libc;
+#[macro_use]
+extern crate log;
+extern crate ref_slice;
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -21,6 +24,7 @@ use std::fs::File;
 use std::os::unix::ffi::OsStringExt;
 
 use clap::{App, Arg};
+use log::{LogRecord, LogLevelFilter};
 use ref_slice::ref_slice_mut;
 
 use errors::*;
@@ -30,6 +34,21 @@ mod errors {
 }
 
 fn main() {
+    // Initialise logging.
+    env_logger::LogBuilder::new()
+        .format(|r: &LogRecord|
+            format!("\n{time} {lvl} {mod} @{file}:{line}\n  {args}",
+                time = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f_UTC"),
+                lvl = r.level(),
+                mod = r.location().module_path(),
+                file = r.location().file(),
+                line = r.location().line(),
+                args = r.args())
+        )
+        .filter(None, LogLevelFilter::Info)
+        .parse(&env::var("RUST_LOG").unwrap_or(String::from("")))
+        .init().unwrap();
+
     fn show_backtrace() -> bool {
         env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) == Ok("1")
     }
