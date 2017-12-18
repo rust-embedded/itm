@@ -78,11 +78,28 @@ fn main() {
 fn run() -> Result<()> {
     let matches = App::new("itmdump")
         .version(include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt")))
-        .arg(Arg::with_name("PATH").help("Named pipe to use").required(true))
+        .arg(Arg::with_name("PATH")
+                 .help("Named pipe to use")
+                 .required(true))
+        .arg(Arg::with_name("port")
+                 .long("stimulus")
+                 .short("s")
+                 .help("Stimulus port to extract ITM data for.")
+                 .takes_value(true)
+                 .default_value("0")
+                 .validator(|s| match s.parse::<u8>() {
+                                    Ok(_) => Ok(()),
+                                    Err(e) => Err(e.to_string())
+                                }))
         .get_matches();
 
     let pipe = PathBuf::from(matches.value_of("PATH").unwrap());
     let pipe_ = pipe.display();
+
+    let stim_port = matches.value_of("port")
+                           .unwrap() // We supplied a default value
+                           .parse::<u8>()
+                           .expect("Arg validator should ensure this parses");
 
     if pipe.exists() {
         try!(fs::remove_file(&pipe)
@@ -130,8 +147,8 @@ fn run() -> Result<()> {
             try!(stream.read_exact(ref_slice_mut(&mut header)));
             let port = header >> 3;
 
-            // Ignore all the packets that don't come from the stimulus port 0
-            if port != 0 {
+            // Ignore packets not from the chosen stimulus port
+            if port != stim_port {
                 return Ok(());
             }
 
