@@ -153,7 +153,7 @@ fn run() -> Result<()> {
                 }
                 _ => {
                     // We don't know this header type, skip.
-                    warn!("Unhandled header type = {:x}", header);
+                    debug!("Unhandled header type = {:x}", header);
                     Ok(())
                 }
             }
