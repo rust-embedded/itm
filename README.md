@@ -3,7 +3,7 @@
 
 # `itm`
 
-> Tool to parse and dump [ITM] packets
+> A Rust crate and tool `itmdump` to parse and dump ARM [ITM] packets.
 
 [ITM]: http://infocenter.arm.com/help/topic/com.arm.doc.ddi0314h/Chdbicbg.html
 
