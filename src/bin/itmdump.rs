@@ -79,6 +79,11 @@ fn run() -> Result<()> {
                  .short("f")
                  .help("Path to file (or named pipe) to read from")
                  .takes_value(true))
+        .arg(Arg::with_name("follow")
+                 .long("follow")
+                 .short("F")
+                 .help("Keep the file open after reading through it and \
+                        append new output as it is written. Like `tail -f'."))
         .arg(Arg::with_name("port")
                  .long("stimulus")
                  .short("s")
@@ -95,6 +100,8 @@ fn run() -> Result<()> {
                            .unwrap() // We supplied a default value
                            .parse::<u8>()
                            .expect("Arg validator should ensure this parses");
+
+    let follow = matches.is_present("follow");
 
     let mut stream = open_read(&matches)?;
 
@@ -135,13 +142,23 @@ fn run() -> Result<()> {
                 }
             }
         })() {
-            match e.kind() {
-                io::ErrorKind::UnexpectedEof => {
+            // Error caught in main loop as `e`.
+            if e.kind() == io::ErrorKind::UnexpectedEof {
+                if follow {
+                    // TODO: There's a bug here where we can lose data.
+                    // UnexpectedEof is returned when read_exact() encounters EOF
+                    // before it fills its buffer, but in that case it may have
+                    // already read _some_ data, which we discard here.
+                    //
+                    // We could buffer input until we can read a full packet,
+                    // or turn parsing into a state machine.
                     thread::sleep(Duration::from_millis(100));
+                } else {
+                    // !follow and EOF. Exit.
+                    return Ok(())
                 }
-                _ => {
-                    error!("{}", e);
-                }
+            } else {
+                error!("{}", e);
             }
         }
     }
