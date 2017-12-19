@@ -16,7 +16,7 @@ extern crate ref_slice;
 
 use clap::{Arg, App, ArgMatches};
 use heapless::Vec as HVec;
-use itm::packet::{self, Packet, UserData};
+use itm::packet::{self, Packet, Instrumentation};
 use log::{LogRecord, LogLevelFilter};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -126,7 +126,7 @@ fn run() -> Result<()> {
         match p {
             Ok(p) => {
                 match p.kind {
-                    packet::Kind::UserData(ref ud) if ud.port == port => {
+                    packet::Kind::Instrumentation(ref ud) if ud.port == port => {
                         stdout.write_all(&ud.payload)?;
                     }
                     _ => (),
@@ -181,8 +181,8 @@ fn read_packet(input: &mut Read) -> Result<Packet> {
     let header = header[0];
     match header & 0b111 {
         0b001|0b010|0b011 => {
-            // User data packet.
-            let mut ud = UserData {
+            // Instrumentation packet.
+            let mut ud = Instrumentation {
                 payload: HVec::new(),
                 port: header >> 3,
             };
@@ -200,7 +200,7 @@ fn read_packet(input: &mut Read) -> Result<Packet> {
 
             Ok(Packet {
                 header: header,
-                kind: packet::Kind::UserData(ud),
+                kind: packet::Kind::Instrumentation(ud),
             })
         },
         _ => {
