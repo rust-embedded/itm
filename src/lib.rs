@@ -85,3 +85,9 @@
 //!
 //! - [ARM CoreSight Technical Reference Manual section on ITM][CoreSight ITM]
 //!   [CoreSight ITM]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0314h/CAAGGCDH.html
+
+#![deny(warnings)]
+
+extern crate heapless;
+
+pub mod packet;

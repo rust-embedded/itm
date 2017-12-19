@@ -7,6 +7,7 @@ extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
 extern crate heapless;
+extern crate itm;
 extern crate libc;
 #[macro_use]
 extern crate log;
@@ -15,6 +16,7 @@ extern crate ref_slice;
 
 use clap::{Arg, App, ArgMatches};
 use heapless::Vec as HVec;
+use itm::packet::{self, Packet, UserData};
 use log::{LogRecord, LogLevelFilter};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -36,21 +38,6 @@ mod errors {
             }
         }
     }
-}
-
-pub const MAX_PAYLOAD_SIZE: usize = 4;
-
-// TODO: Probably add a .kind field and Kind enum when we need to handle more
-// kinds of packets.
-struct Packet {
-    // The header byte received for this packet.
-    pub header: u8,
-
-    /// Data in this packet.
-    pub payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
-
-    /// Stimulus port this packet was sent from.
-    pub port: u8,
 }
 
 fn main() {
@@ -138,8 +125,11 @@ fn run() -> Result<()> {
         let p = read_packet(&mut stream);
         match p {
             Ok(p) => {
-                if p.port == port {
-                    stdout.write_all(&p.payload)?;
+                match p.kind {
+                    packet::Kind::UserData(ref ud) if ud.port == port => {
+                        stdout.write_all(&ud.payload)?;
+                    }
+                    _ => (),
                 }
             }
             Err(e @ Error(ErrorKind::UnknownHeader(_), _)) => {
@@ -189,26 +179,29 @@ fn read_packet(input: &mut Read) -> Result<Packet> {
     let mut header = [0; 1];
     input.read_exact(&mut header)?;
     let header = header[0];
-    let mut packet = Packet {
-        header: header,
-        payload: HVec::new(),
-        port: header >> 3,
-    };
     match header & 0b111 {
-        0b01|0b10|0b11 => {
-            // Data packet.
+        0b001|0b010|0b011 => {
+            // User data packet.
+            let mut ud = UserData {
+                payload: HVec::new(),
+                port: header >> 3,
+            };
+
             let payload_size =
                 match header & 0b11 {
                     0b01 => 1,
                     0b10 => 2,
                     0b11 => 4,
-                    _ => return Err(Error::from(
-                                    ErrorKind::UnknownHeader(header))),
+                    _ => unreachable!(), // Contradicts match on last 3 bits.
                 };
-            packet.payload.resize_default(payload_size)
-                          .expect("payload_size <= packet.payload.capacity");
-            input.read_exact(&mut *packet.payload)?;
-            Ok(packet)
+            ud.payload.resize_default(payload_size)
+                      .expect("payload_size <= payload.capacity");
+            input.read_exact(&mut *ud.payload)?;
+
+            Ok(Packet {
+                header: header,
+                kind: packet::Kind::UserData(ud),
+            })
         },
         _ => {
             return Err(Error::from(ErrorKind::UnknownHeader(header)));
