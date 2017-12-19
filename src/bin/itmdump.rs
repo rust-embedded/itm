@@ -11,24 +11,14 @@ extern crate libc;
 extern crate log;
 extern crate ref_slice;
 
-use std::io::{Read, Write};
-use std::path::PathBuf;
-use std::time::Duration;
-use std::{env, fs, io, process, thread};
-
-#[cfg(not(unix))]
-use std::fs::OpenOptions;
-
-#[cfg(unix)]
-use std::ffi::CString;
-#[cfg(unix)]
-use std::fs::File;
-#[cfg(unix)]
-use std::os::unix::ffi::OsStringExt;
 
 use clap::{Arg, App, ArgMatches};
 use log::{LogRecord, LogLevelFilter};
 use ref_slice::ref_slice_mut;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::time::Duration;
+use std::{env, io, process, thread};
 
 use errors::*;
 
@@ -79,9 +69,16 @@ fn main() {
 fn run() -> Result<()> {
     let matches = App::new("itmdump")
         .version(include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt")))
-        .arg(Arg::with_name("PATH")
-                 .help("Named pipe to use")
-                 .required(true))
+        .about("\n\
+                Reads data from an ARM CPU ITM and decodes it. \n\
+                \n\
+                Input is from an existing file (or named pipe) at a \
+                supplied path, or else from standard input.")
+        .arg(Arg::with_name("file")
+                 .long("file")
+                 .short("f")
+                 .help("Path to file (or named pipe) to read from")
+                 .takes_value(true))
         .arg(Arg::with_name("port")
                  .long("stimulus")
                  .short("s")
@@ -150,43 +147,16 @@ fn run() -> Result<()> {
     }
 }
 
-fn open_read(matches: &ArgMatches) -> Result<impl io::Read> {
-    let pipe = PathBuf::from(matches.value_of("PATH").unwrap());
-    let pipe_ = pipe.display();
-
-    if pipe.exists() {
-        try!(fs::remove_file(&pipe)
-            .chain_err(|| format!("couldn't remove {}", pipe_)));
-    }
-
-    Ok(
-        if cfg!(unix) {
-            // Use a named pipe.
-            let cpipe =
-                try!(CString::new(pipe.clone().into_os_string().into_vec())
-                     .chain_err(|| {
-                         format!("error converting {} to a C string", pipe_)
-                     }));
-
-            match unsafe { libc::mkfifo(cpipe.as_ptr(), 0o644) } {
-                0 => {}
-                e => {
-                    try!(Err(io::Error::from_raw_os_error(e)).chain_err(|| {
-                        format!("couldn't create a named pipe in {}", pipe_)
-                    }))
-                }
-            }
-
-            try!(File::open(&pipe)
-                .chain_err(|| format!("couldn't open {}", pipe_)))
-        } else {
-            // Not unix.
-            try!(OpenOptions::new()
-                 .create(true)
-                 .read(true)
-                 .write(true)
-                 .open(&pipe)
-                 .chain_err(|| format!("couldn't open {}", pipe_)))
-        }
-    )
+fn open_read<'a>(matches: &ArgMatches) -> Result<impl io::Read + 'a> {
+    let path = matches.value_of("file");
+    Ok(match path {
+        Some(path) => {
+            let f =
+                File::open(path)
+                     .chain_err(|| format!("Couldn't open source file '{}'",
+                                           path))?;
+            Box::new(f) as Box<io::Read + 'static>
+        },
+        None => Box::new(io::stdin()) as Box<io::Read + 'static>,
+    })
 }
