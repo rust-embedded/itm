@@ -21,3 +21,10 @@ ref_slice = "^1.1.0"
 
 [dev-dependencies]
 tempdir = "0.3.5"
+
+# Patch `heapless` with my fork until my [PR] is merged.
+# Adds methods Vec::resize() and Vec::resize_default()
+# [PR] https://github.com/japaric/heapless/pull/13
+[patch.crates-io.heapless]
+git = "https://github.com/fluffysquirrels/heapless"
+rev = "0917beb92a92d06f6267ee595a65cb0858f3ed59"

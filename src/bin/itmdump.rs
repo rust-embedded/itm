@@ -205,11 +205,8 @@ fn read_packet(input: &mut Read) -> Result<Packet> {
                     _ => return Err(Error::from(
                                     ErrorKind::UnknownHeader(header))),
                 };
-            // TODO: payload.resize_default(), would be nice.
-            for _ in 0..payload_size {
-                packet.payload.push(0)
-                      .expect("payload_size <= packet.payload.capacity");
-            }
+            packet.payload.resize_default(payload_size)
+                          .expect("payload_size <= packet.payload.capacity");
             input.read_exact(&mut *packet.payload)?;
             Ok(packet)
         },

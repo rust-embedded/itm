@@ -133,7 +133,7 @@ dependencies = [
 [[package]]
 name = "heapless"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+source = "git+https://github.com/fluffysquirrels/heapless?rev=0917beb92a92d06f6267ee595a65cb0858f3ed59#0917beb92a92d06f6267ee595a65cb0858f3ed59"
 dependencies = [
  "untagged-option 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -146,7 +146,7 @@ dependencies = [
  "clap 2.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "heapless 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "heapless 0.2.0 (git+https://github.com/fluffysquirrels/heapless?rev=0917beb92a92d06f6267ee595a65cb0858f3ed59)",
  "libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "ref_slice 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -377,7 +377,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ff511d5dc435d703f4971bc399647c9bc38e20cb41452e3b9feb4765419ed3f3"
 "checksum fuchsia-zircon 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f6c0581a4e363262e52b87f59ee2afe3415361c6ec35e665924eb08afe8ff159"
 "checksum fuchsia-zircon-sys 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "43f3795b4bae048dc6123a6b972cadde2e676f9ded08aef6bb77f5f157684a82"
-"checksum heapless 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "6aaca074969792d29423a987fee80c0a9623031f7535767db5afeb3e1d9be3fb"
+"checksum heapless 0.2.0 (git+https://github.com/fluffysquirrels/heapless?rev=0917beb92a92d06f6267ee595a65cb0858f3ed59)" = "<none>"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 "checksum lazy_static 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "c8f31047daa365f19be14b47c29df4f7c3b581832407daabe6ae77397619237d"
 "checksum libc 0.2.34 (registry+https://github.com/rust-lang/crates.io-index)" = "36fbc8a8929c632868295d0178dd8f63fc423fd7537ad0738372bd010b3ac9b0"
