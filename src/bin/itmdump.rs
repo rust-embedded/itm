@@ -49,7 +49,7 @@ struct Packet {
     /// Data in this packet.
     pub payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
 
-    /// Stimuls port this packet was sent from.
+    /// Stimulus port this packet was sent from.
     pub port: u8,
 }
 
