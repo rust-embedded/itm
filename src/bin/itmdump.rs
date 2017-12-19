@@ -1,4 +1,5 @@
 #![deny(warnings)]
+#![feature(conservative_impl_trait)]
 
 extern crate chrono;
 extern crate clap;
@@ -25,7 +26,7 @@ use std::fs::File;
 #[cfg(unix)]
 use std::os::unix::ffi::OsStringExt;
 
-use clap::{App, Arg};
+use clap::{Arg, App, ArgMatches};
 use log::{LogRecord, LogLevelFilter};
 use ref_slice::ref_slice_mut;
 
@@ -93,56 +94,18 @@ fn run() -> Result<()> {
                                 }))
         .get_matches();
 
-    let pipe = PathBuf::from(matches.value_of("PATH").unwrap());
-    let pipe_ = pipe.display();
-
     let stim_port = matches.value_of("port")
                            .unwrap() // We supplied a default value
                            .parse::<u8>()
                            .expect("Arg validator should ensure this parses");
 
-    if pipe.exists() {
-        try!(fs::remove_file(&pipe)
-            .chain_err(|| format!("couldn't remove {}", pipe_)));
-    }
-
-    let mut stream = match () {
-        #[cfg(unix)]
-        () => {
-            let cpipe =
-                try!(CString::new(pipe.clone().into_os_string().into_vec())
-                     .chain_err(|| {
-                         format!("error converting {} to a C string", pipe_)
-                     }));
-
-            match unsafe { libc::mkfifo(cpipe.as_ptr(), 0o644) } {
-                0 => {}
-                e => {
-                    try!(Err(io::Error::from_raw_os_error(e)).chain_err(|| {
-                        format!("couldn't create a named pipe in {}", pipe_)
-                    }))
-                }
-            }
-
-            try!(File::open(&pipe)
-                .chain_err(|| format!("couldn't open {}", pipe_)))
-        }
-        #[cfg(not(unix))]
-        () => {
-            try!(OpenOptions::new()
-                 .create(true)
-                 .read(true)
-                 .write(true)
-                 .open(&pipe)
-                 .chain_err(|| format!("couldn't open {}", pipe_)))
-        }
-    };
-
-    let mut header = 0;
+    let mut stream = open_read(&matches)?;
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     loop {
+        let mut header = 0;
+
         if let Err(e) = (|| {
             try!(stream.read_exact(ref_slice_mut(&mut header)));
             let port = header >> 3;
@@ -185,4 +148,45 @@ fn run() -> Result<()> {
             }
         }
     }
+}
+
+fn open_read(matches: &ArgMatches) -> Result<impl io::Read> {
+    let pipe = PathBuf::from(matches.value_of("PATH").unwrap());
+    let pipe_ = pipe.display();
+
+    if pipe.exists() {
+        try!(fs::remove_file(&pipe)
+            .chain_err(|| format!("couldn't remove {}", pipe_)));
+    }
+
+    Ok(
+        if cfg!(unix) {
+            // Use a named pipe.
+            let cpipe =
+                try!(CString::new(pipe.clone().into_os_string().into_vec())
+                     .chain_err(|| {
+                         format!("error converting {} to a C string", pipe_)
+                     }));
+
+            match unsafe { libc::mkfifo(cpipe.as_ptr(), 0o644) } {
+                0 => {}
+                e => {
+                    try!(Err(io::Error::from_raw_os_error(e)).chain_err(|| {
+                        format!("couldn't create a named pipe in {}", pipe_)
+                    }))
+                }
+            }
+
+            try!(File::open(&pipe)
+                .chain_err(|| format!("couldn't open {}", pipe_)))
+        } else {
+            // Not unix.
+            try!(OpenOptions::new()
+                 .create(true)
+                 .read(true)
+                 .write(true)
+                 .open(&pipe)
+                 .chain_err(|| format!("couldn't open {}", pipe_)))
+        }
+    )
 }
