@@ -3,7 +3,7 @@
 use error::{Error, ErrorKind, Result};
 use heapless::Vec as HVec;
 use packet::{self, Packet, Instrumentation};
-use std::io::Read;
+use std::io::{Cursor, Read};
 
 /// Parses ITM packets.
 pub struct Decoder<R: Read> {
@@ -63,3 +63,9 @@ impl<R: Read> Decoder<R> {
 }
 
 // TODO: Parse tests.
+/// Decode a single packet from a slice of bytes.
+pub fn from_slice(s: &[u8]) -> Result<Packet> {
+    let mut d = Decoder::new(Cursor::new(Vec::from(s)));
+    d.read_packet()
+}
+
