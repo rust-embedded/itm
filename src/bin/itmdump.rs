@@ -117,18 +117,21 @@ fn run() -> Result<()> {
             Err(Error(ErrorKind::Io(ref e), _))
             if e.kind() == io::ErrorKind::UnexpectedEof => {
                 if follow {
-                    // TODO: There's a bug here where we can lose
-                    // data.  UnexpectedEof is returned when
-                    // read_exact() encounters EOF before it fills its
-                    // buffer, but in that case it may have already
-                    // read _some_ data, which we discard here.
+                    // FIXME: We can lose data here. UnexpectedEof is
+                    // returned when read_exact() encounters EOF
+                    // before it fills its buffer, but in that case it
+                    // may have already read _some_ data, which we
+                    // discard.
                     //
                     // Instead we could buffer input until we can read
-                    // a full packet, or turn parsing into a state
-                    // machine.
+                    // a full packet, turn parsing into a state
+                    // machine, or create a reader that sleeps on EOF.
                     thread::sleep(Duration::from_millis(100));
                 } else {
                     // !follow and EOF. Exit.
+
+                    // FIXME: We may have reached EOF part way into a
+                    // packet but don't report missing data.
                     return Ok(())
                 }
             },
