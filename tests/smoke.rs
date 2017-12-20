@@ -1,73 +1,68 @@
+#![deny(warnings)]
+
 extern crate tempdir;
 
 use std::env;
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
-use std::process::{Child, ChildStdout, Command, Stdio};
+use std::io::Write;
+use std::process::{Command, Output, Stdio};
 
 use tempdir::TempDir;
 
 // NOTE the order of these fields is important. The file must be closed before
 // destroying the temporary directory.
 struct ItmDump {
-    stdout: ChildStdout,
-    child: Child,
-    pipe: File,
+    command: Command,
+    file: File,
     _td: TempDir,
 }
 
 impl ItmDump {
     pub fn new() -> ItmDump {
         let td = TempDir::new("itmdump").unwrap();
-        let path = td.path().join("fifo");
+        let path = td.path().join("file");
         let mut me = env::current_exe().unwrap();
         me.pop();
         if me.ends_with("deps") {
             me.pop();
         }
-        let mut child = Command::new(me.join("itmdump"))
-            .arg(&path)
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
+        let mut command = Command::new(me.join("itmdump"));
+        command.arg("-f")
+               .arg(&path)
+               .stdout(Stdio::piped());
 
-        while !path.exists() {}
-        let pipe = OpenOptions::new()
+        let file = OpenOptions::new()
             .write(true)
+            .create(true)
             .open(path)
             .unwrap();
 
         ItmDump {
-            pipe: pipe,
-            stdout: child.stdout.take().unwrap(),
+            file: file,
             _td: td,
-            child: child,
+            command: command,
         }
     }
 
     fn write_u8(&mut self, payload: u8) {
-        self.pipe.write_all(&[0b01, payload]).unwrap();
-        self.pipe.flush().unwrap();
+        self.file.write_all(&[0b01, payload]).unwrap();
+        self.file.flush().unwrap();
     }
 
     fn write_u8x2(&mut self, payload: [u8; 2]) {
-        self.pipe.write_all(&[0b10, payload[0], payload[1]]).unwrap()
+        self.file.write_all(&[0b10, payload[0], payload[1]]).unwrap();
+        self.file.flush().unwrap();
     }
 
     fn write_u8x4(&mut self, payload: [u8; 4]) {
-        self.pipe
+        self.file
             .write_all(&[0b11, payload[0], payload[1], payload[2], payload[3]])
-            .unwrap()
+            .unwrap();
+        self.file.flush().unwrap();
     }
 
-    fn read(&mut self, buffer: &mut [u8]) {
-        self.stdout.read_exact(buffer).unwrap()
-    }
-}
-
-impl Drop for ItmDump {
-    fn drop(&mut self) {
-        self.child.kill().unwrap()
+    fn output(&mut self) -> Output {
+        self.command.output().unwrap()
     }
 }
 
@@ -80,10 +75,9 @@ fn chunks() {
     itmdump.write_u8x4(*b"Worl");
     itmdump.write_u8x2(*b"d\n");
 
-    let mut buffer = [0u8; 13];
-    itmdump.read(&mut buffer);
+    let out = itmdump.output();
 
-    assert_eq!(b"Hello, World\n", &buffer);
+    assert_eq!(*b"Hello, World\n", *out.stdout);
 
 }
 
@@ -97,10 +91,9 @@ fn multiple() {
     itmdump.write_u8('o' as u8);
     itmdump.write_u8('\n' as u8);
 
-    let mut buffer = [0u8; 6];
-    itmdump.read(&mut buffer);
+    let out = itmdump.output();
 
-    assert_eq!(b"Hello\n", &buffer);
+    assert_eq!(*b"Hello\n", *out.stdout);
 }
 
 #[test]
@@ -108,8 +101,7 @@ fn single() {
     let mut itmdump = ItmDump::new();
     itmdump.write_u8('\n' as u8);
 
-    let mut buffer = [0u8];
-    itmdump.read(&mut buffer);
+    let out = itmdump.output();
 
-    assert_eq!(b"\n", &buffer);
+    assert_eq!(*b"\n", *out.stdout);
 }
