@@ -88,6 +88,16 @@
 
 #![deny(warnings)]
 
+#[macro_use]
+extern crate error_chain;
 extern crate heapless;
+#[allow(unused_imports)] // No logging yet.
+#[macro_use]
+extern crate log;
+
+pub mod decoder;
+pub use decoder::Decoder;
+
+pub mod error;
 
 pub mod packet;

@@ -4,41 +4,18 @@
 extern crate chrono;
 extern crate clap;
 extern crate env_logger;
-#[macro_use]
-extern crate error_chain;
-extern crate heapless;
 extern crate itm;
-extern crate libc;
 #[macro_use]
 extern crate log;
-extern crate ref_slice;
-
 
 use clap::{Arg, App, ArgMatches};
-use heapless::Vec as HVec;
-use itm::packet::{self, Packet, Instrumentation};
+use itm::{packet, Decoder};
+use itm::error::{Error, ErrorKind, Result, ResultExt};
 use log::{LogRecord, LogLevelFilter};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::time::Duration;
 use std::{env, io, process, thread};
-
-use errors::{Error, ErrorKind, Result, ResultExt};
-
-mod errors {
-    error_chain! {
-        foreign_links {
-            Io(::std::io::Error);
-        }
-
-        errors {
-            UnknownHeader(b: u8) {
-                description("unknown header byte"),
-                display("unknown header byte: {:x}", b),
-            }
-        }
-    }
-}
 
 fn main() {
     // Initialise logging.
@@ -117,12 +94,13 @@ fn run() -> Result<()> {
 
     let follow = matches.is_present("follow");
 
-    let mut stream = open_read(&matches)?;
+    let read = open_read(&matches)?;
+    let mut decoder = Decoder::new(read);
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
     loop {
-        let p = read_packet(&mut stream);
+        let p = decoder.read_packet();
         match p {
             Ok(p) => {
                 match p.kind {
@@ -175,38 +153,3 @@ fn open_read<'a>(matches: &ArgMatches) -> Result<impl io::Read + 'a> {
     })
 }
 
-fn read_packet(input: &mut Read) -> Result<Packet> {
-    let mut header = [0; 1];
-    input.read_exact(&mut header)?;
-    let header = header[0];
-    match header & 0b111 {
-        0b001|0b010|0b011 => {
-            // Instrumentation packet.
-            let mut ud = Instrumentation {
-                payload: HVec::new(),
-                port: header >> 3,
-            };
-
-            let payload_size =
-                match header & 0b11 {
-                    0b01 => 1,
-                    0b10 => 2,
-                    0b11 => 4,
-                    _ => unreachable!(), // Contradicts match on last 3 bits.
-                };
-            ud.payload.resize_default(payload_size)
-                      .expect("payload_size <= payload.capacity");
-            input.read_exact(&mut *ud.payload)?;
-
-            Ok(Packet {
-                header: header,
-                kind: packet::Kind::Instrumentation(ud),
-            })
-        },
-        _ => {
-            return Err(Error::from(ErrorKind::UnknownHeader(header)));
-        }
-    }
-}
-
-// TODO: Add parse tests.
