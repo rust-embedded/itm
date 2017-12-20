@@ -62,10 +62,103 @@ impl<R: Read> Decoder<R> {
     }
 }
 
-// TODO: Parse tests.
 /// Decode a single packet from a slice of bytes.
 pub fn from_slice(s: &[u8]) -> Result<Packet> {
     let mut d = Decoder::new(Cursor::new(Vec::from(s)));
     d.read_packet()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::from_slice;
+    use error::{Error, ErrorKind, Result};
+    use packet::{Kind, Packet};
+    use std::io;
+
+    #[test]
+    fn header() {
+        let p = decode_one(&[0x01, 0x11]);
+        assert_eq!(p.header, 0x01);
+    }
+
+    #[test]
+    fn instrumentation_payload_1_byte() {
+        let p = decode_one(&[0x01, 0x11]);
+        match p.kind {
+            Kind::Instrumentation(ref i) => {
+                assert_eq!(*i.payload, [0x11]);
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn instrumentation_payload_2_bytes() {
+        let p = decode_one(&[0x02, 0x11, 0x12]);
+        match p.kind {
+            Kind::Instrumentation(ref i) => {
+                assert_eq!(*i.payload, [0x11, 0x12]);
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn instrumentation_payload_4_bytes() {
+        let p = decode_one(&[0x03, 0x11, 0x12, 0x13, 0x14]);
+        match p.kind {
+            Kind::Instrumentation(ref i) => {
+                assert_eq!(*i.payload, [0x11, 0x12, 0x13, 0x14]);
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn instrumentation_stim_port() {
+        let p = decode_one(&[0b00000_001, 0x11]);
+        match p.kind {
+            Kind::Instrumentation(ref i) => {
+                assert_eq!(i.port, 0);
+            },
+            _ => panic!()
+        }
+
+        let p = decode_one(&[0b11111_001, 0x11]);
+        match p.kind {
+            Kind::Instrumentation(ref i) => {
+                assert_eq!(i.port, 31);
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn unknown_header() {
+        let p = try_decode_one(&[0x00]);
+        match p {
+            Err(Error(ErrorKind::UnknownHeader(0x00), _)) => (),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn eof_before_payload() {
+        let p = try_decode_one(&[0x01 /* Missing payload bytes */ ]);
+        match p {
+            Err(Error(ErrorKind::Io(ref e), _))
+            if e.kind() == io::ErrorKind::UnexpectedEof => (),
+            _ => panic!(),
+        }
+    }
+
+    fn decode_one(data: &[u8]) -> Packet {
+        try_decode_one(data).unwrap()
+    }
+
+    fn try_decode_one(data: &[u8]) -> Result<Packet> {
+        let p = from_slice(data);
+        println!("{:#?}", p);
+        p
+    }
+}
