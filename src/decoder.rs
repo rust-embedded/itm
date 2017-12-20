@@ -5,19 +5,28 @@ use heapless::Vec as HVec;
 use packet::{self, Packet, Instrumentation};
 use std::io::Read;
 
+/// Parses ITM packets.
 pub struct Decoder<R: Read> {
     inner: R,
 }
 
 impl<R: Read> Decoder<R> {
-    // TODO: Builder pattern.
-
+    /// Construct a new `Decoder` that reads encoded packets from
+    /// `inner`.
     pub fn new(inner: R) -> Decoder<R> {
         Decoder::<R> {
             inner: inner,
         }
     }
 
+    // TODO: If we need config for the Decoder, my plan is to:
+    // * Add a Config struct with private fields that can be used with
+    //   `serde`, built with a builder pattern (`derive_builder` is
+    //   great), or built with a Default implementation.
+    // * Add a method Decoder.with_config(inner: R, config: Config).
+
+    /// Read a single packet from the inner `Read`. This will block
+    /// for input if no full packet is currently an available.
     pub fn read_packet(&mut self) -> Result<Packet> {
         let mut header = [0; 1];
         self.inner.read_exact(&mut header)?;
