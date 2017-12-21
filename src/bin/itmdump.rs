@@ -1,5 +1,4 @@
 #![deny(warnings)]
-#![feature(conservative_impl_trait)]
 
 extern crate chrono;
 extern crate clap;
@@ -103,9 +102,9 @@ fn run() -> Result<()> {
         let p = decoder.read_packet();
         match p {
             Ok(p) => {
-                match p.kind {
-                    packet::Kind::Instrumentation(ref ud) if ud.port == port => {
-                        stdout.write_all(&ud.payload)?;
+                match p.kind() {
+                    &packet::Kind::Instrumentation(ref i) if i.port() == port => {
+                        stdout.write_all(&i.payload())?;
                     }
                     _ => (),
                 }
@@ -139,7 +138,7 @@ fn run() -> Result<()> {
     // Unreachable.
 }
 
-fn open_read<'a>(matches: &ArgMatches) -> Result<impl io::Read + 'a> {
+fn open_read(matches: &ArgMatches) -> Result<Box<io::Read + 'static>> {
     let path = matches.value_of("file");
     Ok(match path {
         Some(path) => {

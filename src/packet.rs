@@ -9,10 +9,22 @@ pub const MAX_PAYLOAD_SIZE: usize = 4;
 #[derive(Debug)]
 pub struct Packet {
     /// The header byte received for this packet.
-    pub header: u8,
+    pub(crate) header: u8,
 
     /// The kind (type) of this packet.
-    pub kind: Kind,
+    pub(crate) kind: Kind,
+}
+
+impl Packet {
+    /// Returns the header byte received for this packet.
+    pub fn header(&self) -> u8 {
+        self.header
+    }
+
+    /// The kind (type) of this packet.
+    pub fn kind(&self) -> &Kind {
+        &self.kind
+    }
 }
 
 /// The type of a packet.
@@ -30,10 +42,22 @@ pub enum Kind {
 /// Contents of an Instrumentation packet, with data from a software application
 pub struct Instrumentation {
     /// Data in this packet.
-    pub payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
+    pub(crate) payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
 
     /// Stimulus port this packet was sent from.
-    pub port: u8,
+    pub(crate) port: u8,
+}
+
+impl Instrumentation {
+    /// Data in this packet.
+    pub fn payload(&self) -> &[u8] {
+        &*self.payload
+    }
+
+    /// Stimulus port this packet was sent from.
+    pub fn port(&self) -> u8 {
+        self.port
+    }
 }
 
 impl Debug for Instrumentation {
