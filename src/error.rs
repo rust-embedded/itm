@@ -12,5 +12,13 @@ error_chain! {
             description("unknown header byte"),
             display("unknown header byte: {:x}", b),
         }
+        EofDuringPacket {
+            description("end of file during packet"),
+            display("end of file during packet"),
+        }
+        EofBeforePacket {
+            description("end of file before packet"),
+            display("end of file before packet"),
+        }
     }
 }

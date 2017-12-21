@@ -3,7 +3,7 @@
 use error::{Error, ErrorKind, Result};
 use heapless::Vec as HVec;
 use packet::{self, Packet, Instrumentation};
-use std::io::{Cursor, Read};
+use std::io::{self, Cursor, Read};
 
 /// Parses ITM packets.
 pub struct Decoder<R: Read> {
@@ -29,7 +29,12 @@ impl<R: Read> Decoder<R> {
     /// for input if no full packet is currently an available.
     pub fn read_packet(&mut self) -> Result<Packet> {
         let mut header = [0; 1];
-        self.inner.read_exact(&mut header)?;
+        match self.inner.read_exact(&mut header) {
+            Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof =>
+                return Err(Error::from(ErrorKind::EofBeforePacket)),
+            Err(e) => return Err(Error::from(e)),
+            Ok(_) => (),
+        };
         let header = header[0];
         match header & 0b111 {
             0b001|0b010|0b011 => {
@@ -48,7 +53,12 @@ impl<R: Read> Decoder<R> {
                     };
                 ud.payload.resize_default(payload_size)
                     .expect("payload_size <= payload.capacity");
-                self.inner.read_exact(&mut *ud.payload)?;
+                match self.inner.read_exact(&mut *ud.payload) {
+                    Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof =>
+                        return Err(Error::from(ErrorKind::EofDuringPacket)),
+                    Err(e) => return Err(Error::from(e)),
+                    Ok(_) => (),
+                };
 
                 Ok(Packet {
                     header: header,
@@ -73,7 +83,6 @@ mod tests {
     use super::from_slice;
     use error::{Error, ErrorKind, Result};
     use packet::{Kind, Packet};
-    use std::io;
 
     #[test]
     fn header() {
@@ -146,8 +155,16 @@ mod tests {
     fn eof_before_payload() {
         let p = try_decode_one(&[0x01 /* Missing payload bytes */ ]);
         match p {
-            Err(Error(ErrorKind::Io(ref e), _))
-            if e.kind() == io::ErrorKind::UnexpectedEof => (),
+            Err(Error(ErrorKind::EofDuringPacket, _)) => (),
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn eof_before_packet() {
+        let p = try_decode_one(&[/* Missing packet bytes */]);
+        match p {
+            Err(Error(ErrorKind::EofBeforePacket, _)) => (),
             _ => panic!(),
         }
     }

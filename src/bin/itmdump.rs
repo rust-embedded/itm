@@ -114,27 +114,24 @@ fn run() -> Result<()> {
                 // We don't know this header type; warn and continue.
                 debug!("{}", e);
             },
-            Err(Error(ErrorKind::Io(ref e), _))
-            if e.kind() == io::ErrorKind::UnexpectedEof => {
+            Err(Error(ErrorKind::EofBeforePacket, _)) => {
                 if follow {
-                    // FIXME: We can lose data here. UnexpectedEof is
-                    // returned when read_exact() encounters EOF
-                    // before it fills its buffer, but in that case it
-                    // may have already read _some_ data, which we
-                    // discard.
-                    //
-                    // Instead we could buffer input until we can read
-                    // a full packet, turn parsing into a state
-                    // machine, or create a reader that sleeps on EOF.
                     thread::sleep(Duration::from_millis(100));
                 } else {
                     // !follow and EOF. Exit.
-
-                    // FIXME: We may have reached EOF part way into a
-                    // packet but don't report missing data.
                     return Ok(())
                 }
             },
+
+            // FIXME: If in follow mode, we may try to read a packet
+            // but reach the end of the file in the middle. Currently
+            // we'd just return an error and hence exit. When we
+            // receive an error, we've already read and discarded some
+            // data, so we can't just go around this loop again.
+            //
+            // We could make a file following wrapper around `read`
+            // that blocks in a loop retrying the read and sleeping if
+            // there's no data.
             Err(e) => return Err(e),
         }
     } // end of read loop
@@ -155,4 +152,3 @@ fn open_read<'a>(matches: &ArgMatches) -> Result<impl io::Read + 'a> {
         None => Box::new(io::stdin()) as Box<io::Read + 'static>,
     })
 }
-
