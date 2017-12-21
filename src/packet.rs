@@ -1,7 +1,6 @@
 //! Defines ITM packets and their possible contents.
 
 use heapless::Vec as HVec;
-use std::fmt::{self, Debug, Formatter};
 
 pub const MAX_PAYLOAD_SIZE: usize = 4;
 
@@ -40,6 +39,7 @@ pub enum Kind {
 }
 
 /// Contents of an Instrumentation packet, with data from a software application
+#[derive(Debug)]
 pub struct Instrumentation {
     /// Data in this packet.
     pub(crate) payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
@@ -57,17 +57,5 @@ impl Instrumentation {
     /// Stimulus port this packet was sent from.
     pub fn port(&self) -> u8 {
         self.port
-    }
-}
-
-impl Debug for Instrumentation {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
-        // TODO: impl Debug for heapless::Vec, then this can just be derived.
-        //       Eq, PartialEq, Clone would be good too.
-
-        f.debug_struct("Instrumentation")
-         .field("payload", &&*self.payload)
-         .field("port", &self.port)
-         .finish()
     }
 }

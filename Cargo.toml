@@ -14,17 +14,10 @@ chrono = "^0.4"
 clap = "^2.14.0"
 env_logger = "^0.4.3"
 error-chain = "^0.11.0"
-heapless = "^0.2.0"
+heapless = "^0.2.1"
 libc = "^0.2.17"
 log = "^0.3.8"
 ref_slice = "^1.1.0"
 
 [dev-dependencies]
 tempdir = "0.3.5"
-
-# Patch `heapless` with my fork until my [PR] is merged.
-# Adds methods Vec::resize() and Vec::resize_default()
-# [PR] https://github.com/japaric/heapless/pull/13
-[patch.crates-io.heapless]
-git = "https://github.com/fluffysquirrels/heapless"
-rev = "0917beb92a92d06f6267ee595a65cb0858f3ed59"
