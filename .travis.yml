@@ -61,7 +61,9 @@ branches:
   only:
     # release tags
     - /^v\d+\.\d+\.\d+.*$/
+    - auto
     - master
+    - try
 
 notifications:
   email:
