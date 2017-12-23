@@ -1,82 +1,68 @@
-cache: cargo
+# Based on the "trust" template v0.1.2
+# https://github.com/japaric/trust/tree/v0.1.2
+
 dist: trusty
-language: generic
 language: rust
-rust: stable
 services: docker
 sudo: required
 
 env:
   global:
     - CRATE_NAME=itm
-    - DEPLOY_VERSION=stable
-    - TARGET=x86_64-unknown-linux-gnu
 
 matrix:
+  # TODO These are all the build jobs. Adjust as necessary. Comment out what you
+  # don't need
   include:
+    # Linux
+    - env: TARGET=i686-unknown-linux-gnu
+    - env: TARGET=i686-unknown-linux-musl
+    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-musl
+
     # OSX
     - env: TARGET=i686-apple-darwin
       os: osx
     - env: TARGET=x86_64-apple-darwin
       os: osx
 
-    # Linux
-    - env: TARGET=i686-unknown-linux-gnu
-    - env: TARGET=i686-unknown-linux-musl
-    # This target is handled by the default build job
-    # - env: TARGET=x86_64-unknown-linux-gnu
-    - env: TARGET=x86_64-unknown-linux-musl
+before_install:
+  - set -e
+  - rustup self update
 
 install:
-  # curl: cargo + rustc
-  # case: rust-std
-  - if [ -z $TRAVIS_TAG ] || [ $TRAVIS_RUST_VERSION = $DEPLOY_VERSION ]; then
-      curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain=$TRAVIS_RUST_VERSION -y;
-      source ~/.cargo/env;
-      case $TARGET in
-        x86_64-apple-darwin | x86_64-unknown-linux-gnu) ;;
-        *) rustup target add $TARGET ;;
-      esac;
-    fi
+  - sh ci/install.sh
+  - source ~/.cargo/env || true
 
 script:
-  # chmod: Travis can't cache files that are not readable by "others"
-  - if [ -z $TRAVIS_TAG ] || [ $TRAVIS_RUST_VERSION = $DEPLOY_VERSION ]; then
-      cargo generate-lockfile;
+  - bash ci/script.sh
 
-      if [[ $TRAVIS_OS_NAME = linux ]]; then
-        sh ci/run-docker.sh $TARGET || exit 1;
-      else
-        sh ci/run.sh || exit 1;
-      fi;
-
-      chmod -R a+r $HOME/.cargo;
-    fi
+after_script: set +e
 
 before_deploy:
-  - sh ci/package.sh $TARGET
+  - sh ci/before_deploy.sh
 
 deploy:
-  provider: releases
   api_key:
-    secure: Muel87WKuZAv4Fc1QRc4LF2OQpbfdCkvZupA1ik/mBEHxbr8qpBJDLbq1BgNo6XB6RFjOglPEsf1yhxMwMdaNVymQOTTEbMZ29FAsthoH5F/PPpuMWTRB1DXqvwT9AzTaQhKmT1u4ZSxPpLqAOV0tT5Tdm3grSRt9UVlvSBjYo8A+KLWjPVOX88o7MLdbqHWQ8IbeS7nmrhO4eOXk4wgemDLdUPENhrHQb52oetMsaW+W3CZLkyNIYkQAZGpz2Vug1YrZMe+8heGDBuSAPBi0hI5Z9qYNN2Zpcp24XzVrr5KerKNwElPBbx5VyzX2bG1lkyKujRrt3Xl24xf4q0hZLYisTS2Cq5wNbIUvrVGc/y1UQ2sS2NRyVylMi5jryHBmqTc7TLvLrrXP/0SmxO6PeWoKMwcfLIbGmHWqtmp9Qo7hIqruSK6v+myNgUFmbyVsJlsB1Upo3eQ69B4XcG3uOD5kwvzo57lyzLxXDnvQk/v1Ygab8lFBeNr8dBiA3+RTaVblXSFKY1cQlPdg/AzkEXcz6xKda7y3gz530cgxL9f2Kx0YRwi6Bh9jBEA52CHFUF7UDiyPmGE+6rcYhpqIwvZ2nDQwLnxu+pV620ttYoXqK5FYDxPAVWuSe3A/F4KZzgAse0FFg0moOZTcurcrRSQfPT3EVqTO8xZi+Ou+kw=
+    secure: 1DhCSm5VHF9WKDqfpfAQZJDlUC7radCwsRpa8MEGbWTOYc0J5ZMV1ZCd20M1JDGVJO5cT5Eopo/eiB33qb/cppiFOGZYOSRgCRmwUHSmWWKR4xIzowlkgBk2/eXntYuP88EwQyw4u4cblT6KoicgBA3niuWuFQFN+yjgvbrq5JSaziuQwHvqc4R+OrKLjsJKc7/OK7O+hLjzGMZVvwgvg0NDiVjACUVzRnnr2ONs+gbr/pYXTVjG7tafX9xfzb+bjmAj9W6ID4Fgn20R7S/id6/Iqd53BG/tmstJ33tuC7didV5o1FDblRwqjw7r4lMknIhfNpRLQFAPcQhukssteDIrKwVA/XTDlvqKSEV417XSOILDWupdmri/OhhEH8GjHL3JaK8BFDep5E4j2Sx4Ee8XHDh7Lmx0Tdi4tm491CNGtHDfNc2fhpGpi8hTvA+KDR85Xyd/JbNsIi0faT4zUGWfdjgm60XVhSUviAaeBUdav+wX51PkiF2Am8Io/IEDNCtZ6CsO37qnUMG/5hQ5SeIlXlc0rAY3Qp8H5PpztZkXYXB0/w3yGS70Y9r60QQZeqQt64/qdFuvTNCF8vbEEXzE1WMoT+/ou+ITwXeGb7BWekJpRCG9qla/ro1Z7yIHBft6qYcqh4+kxIdKbWvLwq12epy1xrH585jawpg524E=
   file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
-  # don't delete the target directory
-  skip_cleanup: true
   on:
-    condition: $TRAVIS_RUST_VERSION = $DEPLOY_VERSION
+    condition: $TRAVIS_RUST_VERSION = stable
     tags: true
+  provider: releases
+  skip_cleanup: true
 
-cache:
-  directories:
-    - $HOME/.cargo
-    - target
+cache: cargo
+before_cache:
+  # Travis can't cache files that are not readable by "others"
+  - chmod -R a+r $HOME/.cargo
 
 branches:
   only:
-    # Release tags
+    # release tags
     - /^v\d+\.\d+\.\d+.*$/
     - auto
+    - master
     - try
 
 notifications:
