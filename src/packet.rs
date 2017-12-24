@@ -1,7 +1,5 @@
 //! Defines ITM packets and their possible contents.
 
-use heapless::Vec as HVec;
-
 pub const MAX_PAYLOAD_SIZE: usize = 4;
 
 /// Represents a complete received packet.
@@ -41,8 +39,11 @@ pub enum Kind {
 /// Contents of an Instrumentation packet, with data from a software application
 #[derive(Debug)]
 pub struct Instrumentation {
-    /// Data in this packet.
-    pub(crate) payload: HVec<u8, [u8; MAX_PAYLOAD_SIZE]>,
+    /// Contains the data in this packet.
+    pub(crate) payload: [u8; MAX_PAYLOAD_SIZE],
+
+    /// The length of `payload` that contains the relevant data.
+    pub(crate) payload_len: usize,
 
     /// Stimulus port this packet was sent from.
     pub(crate) port: u8,
@@ -51,7 +52,7 @@ pub struct Instrumentation {
 impl Instrumentation {
     /// Data in this packet.
     pub fn payload(&self) -> &[u8] {
-        &*self.payload
+        &self.payload[0..self.payload_len]
     }
 
     /// Stimulus port this packet was sent from.

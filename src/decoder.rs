@@ -1,7 +1,6 @@
 //! Parse ITM packets from bytes and streams.
 
 use error::{Error, ErrorKind, Result};
-use heapless::Vec as HVec;
 use packet::{self, Packet, Instrumentation};
 use std::io::{self, Cursor, Read};
 
@@ -39,26 +38,29 @@ impl<R: Read> Decoder<R> {
         match header & 0b111 {
             0b001|0b010|0b011 => {
                 // Instrumentation packet.
-                let mut ud = Instrumentation {
-                    payload: HVec::new(),
-                    port: header >> 3,
-                };
-
-                let payload_size =
+                let payload_len =
                     match header & 0b11 {
                         0b01 => 1,
                         0b10 => 2,
                         0b11 => 4,
                         _ => unreachable!(), // Contradicts match on last 3 bits.
                     };
-                ud.payload.resize_default(payload_size)
-                    .expect("payload_size <= payload.capacity");
-                match self.inner.read_exact(&mut *ud.payload) {
-                    Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof =>
-                        return Err(Error::from(ErrorKind::EofDuringPacket)),
-                    Err(e) => return Err(Error::from(e)),
-                    Ok(_) => (),
+
+                let mut ud = Instrumentation {
+                    payload: [0; packet::MAX_PAYLOAD_SIZE],
+                    payload_len: payload_len,
+                    port: header >> 3,
                 };
+
+                { // Scope the mutable borrow on buf to satisfy borrow checker.
+                    let buf = &mut ud.payload[0..payload_len];
+                    match self.inner.read_exact(buf) {
+                        Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof =>
+                            return Err(Error::from(ErrorKind::EofDuringPacket)),
+                        Err(e) => return Err(Error::from(e)),
+                        Ok(_) => (),
+                    };
+                }
 
                 Ok(Packet {
                     header: header,
@@ -95,7 +97,7 @@ mod tests {
         let p = decode_one(&[0x01, 0x11]);
         match p.kind {
             Kind::Instrumentation(ref i) => {
-                assert_eq!(*i.payload, [0x11]);
+                assert_eq!(i.payload(), [0x11]);
             },
             _ => panic!()
         }
@@ -106,7 +108,7 @@ mod tests {
         let p = decode_one(&[0x02, 0x11, 0x12]);
         match p.kind {
             Kind::Instrumentation(ref i) => {
-                assert_eq!(*i.payload, [0x11, 0x12]);
+                assert_eq!(i.payload(), [0x11, 0x12]);
             },
             _ => panic!()
         }
@@ -117,7 +119,7 @@ mod tests {
         let p = decode_one(&[0x03, 0x11, 0x12, 0x13, 0x14]);
         match p.kind {
             Kind::Instrumentation(ref i) => {
-                assert_eq!(*i.payload, [0x11, 0x12, 0x13, 0x14]);
+                assert_eq!(i.payload(), [0x11, 0x12, 0x13, 0x14]);
             },
             _ => panic!()
         }
@@ -128,7 +130,7 @@ mod tests {
         let p = decode_one(&[0b00000_001, 0x11]);
         match p.kind {
             Kind::Instrumentation(ref i) => {
-                assert_eq!(i.port, 0);
+                assert_eq!(i.port(), 0);
             },
             _ => panic!()
         }
@@ -136,7 +138,7 @@ mod tests {
         let p = decode_one(&[0b11111_001, 0x11]);
         match p.kind {
             Kind::Instrumentation(ref i) => {
-                assert_eq!(i.port, 31);
+                assert_eq!(i.port(), 31);
             },
             _ => panic!()
         }

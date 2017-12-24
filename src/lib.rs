@@ -90,7 +90,6 @@
 
 #[macro_use]
 extern crate error_chain;
-extern crate heapless;
 #[allow(unused_imports)] // No logging yet.
 #[macro_use]
 extern crate log;
