@@ -23,6 +23,7 @@
 //! ```
 //!
 //! ### Example: reading from saved ITM data in a file
+//!
 //! ``` text
 //! $ itmdump -f /tmp/itm.dump
 //! PANIC at 'Hello, world!', examples/panic.rs:13
@@ -30,22 +31,18 @@
 //!
 //! ### Example: reading from OpenOCD via a named pipe
 //!
-//! [OpenOCD][openocd home] is an open-source tool to debug and flash
-//! microcontrollers.
+//! [OpenOCD][openocd home] is an open-source tool to debug and flash microcontrollers.
 //!
-//! Reading via a named pipe works well on POSIX machines; e.g. Linux
-//! or macOS, but not Windows.
+//! Reading via a named pipe works well on POSIX machines; e.g. Linux or macOS, but not Windows.
 //!
 //! ``` text
 //! $ mkfifo /tmp/itm.fifo
 //! $ itmdump -f /tmp/itm.fifo
 //! ```
 //!
-//! This will create a named pipe: `/tmp/itm.fifo`. Another
-//! application, e.g.  OpenOCD, will have to connect to this pipe and
-//! write to it. Here's an example command for OpenOCD
-//! + GDB that does that. ([OpenOCD documentation on ITM and
-//! TPIU][openocd v7m]).
+//! This will create a named pipe: `/tmp/itm.fifo`. Another application, e.g.  OpenOCD, will have to
+//! connect to this pipe and write to it. Here's an example command for OpenOCD + GDB that does
+//! that. ([OpenOCD documentation on ITM and TPIU][openocd v7m]).
 //!
 //! [openocd home]: http://openocd.org/
 //! [openocd v7m]: http://openocd.org/doc/html/Architecture-and-Core-Commands.html#ARMv7_002dM-specific-commands
@@ -54,8 +51,7 @@
 //! (gdb) monitor tpiu config internal /tmp/itm.fifo uart off 8000000
 //! ```
 //!
-//! `itmdump` will read from the pipe, parse the packets and write the payload
-//! to `stdout`:
+//! `itmdump` will read from the pipe, parse the packets and write the payload to `stdout`:
 //!
 //! ``` text
 //! PANIC at 'Hello, world!', examples/panic.rs:13
@@ -63,12 +59,10 @@
 //!
 //! ### Example: monitoring a file
 //!
-//! `itmdump` can monitor a file and dump new ITM data written to it
-//! (similar to `tail -f`).
+//! `itmdump` can monitor a file and dump new ITM data written to it (similar to `tail -f`).
 //!
-//! This may be useful on Windows especially where POSIX named pipes
-//! are not available. Just let OpenOCD capture to a file and monitor
-//! it with `itmdump`.
+//! This may be useful on Windows especially where POSIX named pipes are not available. Just let
+//! OpenOCD capture to a file and monitor it with `itmdump`.
 //!
 //! ``` text
 //! $ itmdump -f /tmp/itm.live -F
@@ -79,13 +73,15 @@
 //!
 //! - ARMv7-M Architecture Reference Manual - Appendix D4.2 Packet descriptions
 //!
-//!   Available to download [as a PDF][ARMv7-m]
-//!   after a free registration.
-//!   [ARMv7-m]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0403e.b/index.html
+//! Available to download [as a PDF][ARMv7-m] after a free registration.
+//!
+//! [ARMv7-m]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0403e.b/index.html
 //!
 //! - [ARM CoreSight Technical Reference Manual section on ITM][CoreSight ITM]
-//!   [CoreSight ITM]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0314h/CAAGGCDH.html
+//!
+//! [CoreSight ITM]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0314h/CAAGGCDH.html
 
+#![deny(missing_docs)]
 #![deny(warnings)]
 
 #[macro_use]
