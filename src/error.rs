@@ -4,18 +4,21 @@ use std::io;
 
 error_chain! {
     foreign_links {
-        Io(io::Error);
+        Io(io::Error) #[doc = "I/O error"];
     }
 
     errors {
+        /// unknown header byte
         UnknownHeader(b: u8) {
             description("unknown header byte"),
             display("unknown header byte: {:x}", b),
         }
+        /// end of file during packet
         EofDuringPacket {
             description("end of file during packet"),
             display("end of file during packet"),
         }
+        /// end of file before packet
         EofBeforePacket {
             description("end of file before packet"),
             display("end of file before packet"),

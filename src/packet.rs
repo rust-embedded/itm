@@ -1,6 +1,6 @@
 //! Defines ITM packets and their possible contents.
 
-pub const MAX_PAYLOAD_SIZE: usize = 4;
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 4;
 
 /// Represents a complete received packet.
 #[derive(Debug)]
