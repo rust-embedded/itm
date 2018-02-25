@@ -27,9 +27,7 @@ impl ItmDump {
             me.pop();
         }
         let mut command = Command::new(me.join("itmdump"));
-        command.arg("-f")
-               .arg(&path)
-               .stdout(Stdio::piped());
+        command.arg("-f").arg(&path).stdout(Stdio::piped());
 
         let file = OpenOptions::new()
             .write(true)
@@ -50,7 +48,9 @@ impl ItmDump {
     }
 
     fn write_u8x2(&mut self, payload: [u8; 2]) {
-        self.file.write_all(&[0b10, payload[0], payload[1]]).unwrap();
+        self.file
+            .write_all(&[0b10, payload[0], payload[1]])
+            .unwrap();
         self.file.flush().unwrap();
     }
 
@@ -78,7 +78,6 @@ fn chunks() {
     let out = itmdump.output();
 
     assert_eq!(*b"Hello, World\n", *out.stdout);
-
 }
 
 #[test]
