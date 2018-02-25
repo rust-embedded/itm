@@ -120,7 +120,8 @@ fn run() -> Result<()> {
             }
             Err(Error(ErrorKind::EofBeforePacket, _)) => {
                 if follow {
-                    thread::sleep(Duration::from_millis(100));
+                    // NOTE 10 ms let us achieve 60 FPS in the worst case scenario
+                    thread::sleep(Duration::from_millis(10));
                 } else {
                     // !follow and EOF. Exit.
                     return Ok(());
