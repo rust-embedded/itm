@@ -105,6 +105,7 @@ fn run() -> Result<()> {
                 match p.kind() {
                     &packet::Kind::Instrumentation(ref i) if i.port() == port => {
                         stdout.write_all(&i.payload())?;
+                        stdout.flush()?;
                     }
                     _ => (),
                 }
