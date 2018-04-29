@@ -7,13 +7,34 @@ use std::io::{self, Cursor, Read};
 /// Parses ITM packets.
 pub struct Decoder<R: Read> {
     inner: R,
+    follow: bool
+}
+
+// Copy&Paste from std::io::Read::read_exact
+fn read_exact_gently<R: Read>(reader: &mut R, mut buf: &mut [u8], keep_reading: bool) -> ::std::io::Result<()> {
+    use std::io::{ErrorKind, Error};
+    while !buf.is_empty() {
+        match reader.read(buf) {
+            Ok(0) if !keep_reading => break,
+            Ok(0) if keep_reading => continue,
+            Ok(n) => { let tmp = buf; buf = &mut tmp[n..]; }
+            Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    if !buf.is_empty() {
+        Err(Error::new(ErrorKind::UnexpectedEof,
+                       "failed to fill whole buffer"))
+    } else {
+        Ok(())
+    }
 }
 
 impl<R: Read> Decoder<R> {
     /// Construct a new `Decoder` that reads encoded packets from
     /// `inner`.
-    pub fn new(inner: R) -> Decoder<R> {
-        Decoder::<R> { inner: inner }
+    pub fn new(inner: R, follow: bool) -> Decoder<R> {
+        Decoder::<R> { inner: inner, follow: follow}
     }
 
     // TODO: If we need config for the Decoder, my plan is to:
@@ -53,7 +74,7 @@ impl<R: Read> Decoder<R> {
                 {
                     // Scope the mutable borrow on buf to satisfy borrow checker.
                     let buf = &mut ud.payload[0..payload_len];
-                    match self.inner.read_exact(buf) {
+                    match read_exact_gently(&mut self.inner, buf, self.follow) {
                         Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                             return Err(Error::from(ErrorKind::EofDuringPacket))
                         }
@@ -76,7 +97,7 @@ impl<R: Read> Decoder<R> {
 
 /// Decode a single packet from a slice of bytes.
 pub fn from_slice(s: &[u8]) -> Result<Packet> {
-    let mut d = Decoder::new(Cursor::new(Vec::from(s)));
+    let mut d = Decoder::new(Cursor::new(Vec::from(s)), false);
     d.read_packet()
 }
 
