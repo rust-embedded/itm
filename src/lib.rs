@@ -81,6 +81,8 @@
 //!
 //! [CoreSight ITM]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0314h/CAAGGCDH.html
 
+#![allow(renamed_and_removed_lints)]
+#![allow(unused_doc_comments)]
 #![deny(missing_docs)]
 #![deny(warnings)]
 

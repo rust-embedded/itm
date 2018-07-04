@@ -8,8 +8,8 @@ extern crate itm;
 extern crate log;
 
 use clap::{App, Arg, ArgMatches};
-use itm::{packet, Decoder};
 use itm::error::{Error, ErrorKind, Result, ResultExt};
+use itm::{packet, Decoder};
 use log::{LogLevelFilter, LogRecord};
 use std::fs::File;
 use std::io::Write;
@@ -59,7 +59,10 @@ fn main() {
 
 fn run() -> Result<()> {
     let matches = App::new("itmdump")
-        .version(include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt")))
+        .version(concat!(
+            env!("CARGO_PKG_VERSION"),
+            include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt"))
+        ))
         .about(
             "\n\
              Reads data from an ARM CPU ITM and decodes it. \n\
