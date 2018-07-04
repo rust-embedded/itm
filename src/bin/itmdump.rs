@@ -103,7 +103,7 @@ fn run() -> Result<()> {
     let follow = matches.is_present("follow");
 
     let read = open_read(&matches)?;
-    let mut decoder = Decoder::new(read);
+    let mut decoder = Decoder::new(read, follow);
 
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
