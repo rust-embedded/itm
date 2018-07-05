@@ -7,13 +7,14 @@ keywords = ["parse", "tool", "ARM", "ITM"]
 license = "MIT OR Apache-2.0"
 name = "itm"
 repository = "https://github.com/japaric/itm"
-version = "0.2.1"
+version = "0.3.0"
 
 [dependencies]
 chrono = "^0.4"
 clap = "^2.14.0"
 env_logger = "^0.4.3"
-error-chain = "^0.11.0"
+failure = "0.1.1"
+failure_derive = "0.1.1"
 log = "^0.3.8"
 
 [dev-dependencies]

@@ -3,13 +3,13 @@
 extern crate chrono;
 extern crate clap;
 extern crate env_logger;
+extern crate failure;
 extern crate itm;
 #[macro_use]
 extern crate log;
 
 use clap::{App, Arg, ArgMatches};
-use itm::error::{Error, ErrorKind, Result, ResultExt};
-use itm::{packet, Decoder};
+use itm::{packet, Decoder, Error};
 use log::{LogLevelFilter, LogRecord};
 use std::fs::File;
 use std::io::Write;
@@ -33,31 +33,14 @@ fn main() {
         .init()
         .unwrap();
 
-    fn show_backtrace() -> bool {
-        env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) == Ok("1")
-    }
-
     if let Err(e) = run() {
-        let stderr = io::stderr();
-        let mut stderr = stderr.lock();
-
-        writeln!(stderr, "{}", e).unwrap();
-
-        for e in e.iter().skip(1) {
-            writeln!(stderr, "caused by: {}", e).unwrap();
-        }
-
-        if show_backtrace() {
-            if let Some(backtrace) = e.backtrace() {
-                writeln!(stderr, "{:?}", backtrace).unwrap();
-            }
-        }
+        eprintln!("{}", e);
 
         process::exit(1)
     }
 }
 
-fn run() -> Result<()> {
+fn run() -> Result<(), failure::Error> {
     let matches = App::new("itmdump")
         .version(concat!(
             env!("CARGO_PKG_VERSION"),
@@ -117,41 +100,39 @@ fn run() -> Result<()> {
                 }
                 _ => (),
             },
-            Err(e @ Error(ErrorKind::UnknownHeader(_), _)) => {
-                // We don't know this header type; warn and continue.
-                debug!("{}", e);
-            }
-            Err(Error(ErrorKind::EofBeforePacket, _)) => {
-                if follow {
-                    // NOTE 10 ms let us achieve 60 FPS in the worst case scenario
-                    thread::sleep(Duration::from_millis(10));
+            Err(fe) => {
+                if let Some(ie) = fe.downcast_ref::<Error>().cloned() {
+                    match ie {
+                        Error::UnknownHeader { byte } => {
+                            // We don't know this header type; warn and continue.
+                            debug!("unknown header byte: {:x}", byte);
+                        }
+                        Error::EofBeforePacket => {
+                            if follow {
+                                // NOTE 10 ms let us achieve 60 FPS in the worst case scenario
+                                thread::sleep(Duration::from_millis(10));
+                            } else {
+                                // !follow and EOF. Exit.
+                                return Ok(());
+                            }
+                        }
+                        _ => return Err(fe.into()),
+                    }
                 } else {
-                    // !follow and EOF. Exit.
-                    return Ok(());
+                    return Err(fe);
                 }
             }
-
-            // FIXME: If in follow mode, we may try to read a packet
-            // but reach the end of the file in the middle. Currently
-            // we'd just return an error and hence exit. When we
-            // receive an error, we've already read and discarded some
-            // data, so we can't just go around this loop again.
-            //
-            // We could make a file following wrapper around `read`
-            // that blocks in a loop retrying the read and sleeping if
-            // there's no data.
-            Err(e) => return Err(e),
         }
     } // end of read loop
 
     // Unreachable.
 }
 
-fn open_read(matches: &ArgMatches) -> Result<Box<io::Read + 'static>> {
+fn open_read(matches: &ArgMatches) -> Result<Box<io::Read + 'static>, io::Error> {
     let path = matches.value_of("file");
     Ok(match path {
         Some(path) => {
-            let f = File::open(path).chain_err(|| format!("Couldn't open source file '{}'", path))?;
+            let f = File::open(path)?;
             Box::new(f) as Box<io::Read + 'static>
         }
         None => Box::new(io::stdin()) as Box<io::Read + 'static>,

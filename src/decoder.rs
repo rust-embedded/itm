@@ -1,8 +1,11 @@
 //! Parse ITM packets from bytes and streams.
 
-use error::{Error, ErrorKind, Result};
-use packet::{self, Instrumentation, Packet};
 use std::io::{self, Cursor, Read};
+
+use failure;
+
+use packet::{self, Instrumentation, Packet};
+use Error;
 
 /// Parses ITM packets.
 pub struct Decoder<R: Read> {
@@ -45,13 +48,13 @@ impl<R: Read> Decoder<R> {
 
     /// Read a single packet from the inner `Read`. This will block
     /// for input if no full packet is currently an available.
-    pub fn read_packet(&mut self) -> Result<Packet> {
+    pub fn read_packet(&mut self) -> Result<Packet, failure::Error> {
         let mut header = [0; 1];
         match self.inner.read_exact(&mut header) {
             Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                return Err(Error::from(ErrorKind::EofBeforePacket))
+                return Err(Error::EofBeforePacket.into())
             }
-            Err(e) => return Err(Error::from(e)),
+            Err(e) => return Err(e.into()),
             Ok(_) => (),
         };
         let header = header[0];
@@ -76,9 +79,9 @@ impl<R: Read> Decoder<R> {
                     let buf = &mut ud.payload[0..payload_len];
                     match read_exact_gently(&mut self.inner, buf, self.follow) {
                         Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                            return Err(Error::from(ErrorKind::EofDuringPacket))
+                            return Err(Error::EofDuringPacket.into());
                         }
-                        Err(e) => return Err(Error::from(e)),
+                        Err(e) => return Err(e.into()),
                         Ok(_) => (),
                     };
                 }
@@ -88,15 +91,13 @@ impl<R: Read> Decoder<R> {
                     kind: packet::Kind::Instrumentation(ud),
                 })
             }
-            _ => {
-                return Err(Error::from(ErrorKind::UnknownHeader(header)));
-            }
+            _ => Err(Error::UnknownHeader { byte: header }.into()),
         }
     }
 }
 
 /// Decode a single packet from a slice of bytes.
-pub fn from_slice(s: &[u8]) -> Result<Packet> {
+pub fn from_slice(s: &[u8]) -> Result<Packet, failure::Error> {
     let mut d = Decoder::new(Cursor::new(Vec::from(s)), false);
     d.read_packet()
 }
