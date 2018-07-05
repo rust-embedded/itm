@@ -81,13 +81,12 @@
 //!
 //! [CoreSight ITM]: http://infocenter.arm.com/help/index.jsp?topic=/com.arm.doc.ddi0314h/CAAGGCDH.html
 
-#![allow(renamed_and_removed_lints)]
-#![allow(unused_doc_comments)]
 #![deny(missing_docs)]
 #![deny(warnings)]
 
+extern crate failure;
 #[macro_use]
-extern crate error_chain;
+extern crate failure_derive;
 #[allow(unused_imports)] // No logging yet.
 #[macro_use]
 extern crate log;
@@ -95,6 +94,23 @@ extern crate log;
 pub mod decoder;
 pub use decoder::Decoder;
 
-pub mod error;
-
 pub mod packet;
+
+/// Error type
+#[derive(Clone, Copy, Debug, Fail)]
+pub enum Error {
+    /// end of file before packet
+    #[fail(display = "end of file before packet")]
+    EofBeforePacket,
+
+    /// end of file during packet
+    #[fail(display = "end of file during packet")]
+    EofDuringPacket,
+
+    /// unknown header
+    #[fail(display = "unknown header byte: {:x}", byte)]
+    UnknownHeader {
+        /// unknown header byte
+        byte: u8,
+    },
+}
