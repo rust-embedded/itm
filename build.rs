@@ -27,7 +27,11 @@ fn main() {
 
 fn commit_info() -> String {
     match (commit_hash(), commit_date()) {
-        (Ok(hash), Ok(date)) => format!(" ({} {})", hash.trim(), date.trim()),
+        (Ok(hash), Ok(date)) => if !hash.is_empty() && !date.is_empty() {
+            format!(" ({} {})", hash.trim(), date.trim())
+        } else {
+            String::new()
+        }
         _ => String::new(),
     }
 }
