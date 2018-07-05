@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.1] - 2018-07-04
+
+### Fixed
+
+- The output of `itmdump -V` no longer includes empty parentheses at the end.
+
 ## [v0.3.0] - 2018-07-04
 
 ### Changed
