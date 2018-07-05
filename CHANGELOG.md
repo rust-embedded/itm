@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.0] - 2018-07-04
+
+### Changed
+
+- Moved error handling from error-chain failure.
+
+### Fixed
+
+- Include the crate version in the output of `itmdump -V`
+- sporadic EOF errors in follow mode
+
 ## [v0.2.1] - 2018-02-25
 
 ### Changed
@@ -49,7 +60,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `itmdump` tool that parses instrumentation packets from the stimulus port 0
   and dumps the payload to `stdout`.
 
-[Unreleased]: https://github.com/japaric/itm/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/japaric/itm/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/japaric/itm/compare/v0.2.1...v0.3.0
 [v0.2.1]: https://github.com/japaric/itm/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/japaric/itm/compare/v0.1.1...v0.2.0
 [v0.1.1]: https://github.com/japaric/itm/compare/v0.1.0...v0.1.1
