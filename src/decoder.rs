@@ -10,24 +10,33 @@ use Error;
 /// Parses ITM packets.
 pub struct Decoder<R: Read> {
     inner: R,
-    follow: bool
+    follow: bool,
 }
 
 // Copy&Paste from std::io::Read::read_exact
-fn read_exact_gently<R: Read>(reader: &mut R, mut buf: &mut [u8], keep_reading: bool) -> ::std::io::Result<()> {
-    use std::io::{ErrorKind, Error};
+fn read_exact_gently<R: Read>(
+    reader: &mut R,
+    mut buf: &mut [u8],
+    keep_reading: bool,
+) -> ::std::io::Result<()> {
+    use std::io::{Error, ErrorKind};
     while !buf.is_empty() {
         match reader.read(buf) {
             Ok(0) if !keep_reading => break,
             Ok(0) if keep_reading => continue,
-            Ok(n) => { let tmp = buf; buf = &mut tmp[n..]; }
+            Ok(n) => {
+                let tmp = buf;
+                buf = &mut tmp[n..];
+            }
             Err(ref e) if e.kind() == ErrorKind::Interrupted => {}
             Err(e) => return Err(e),
         }
     }
     if !buf.is_empty() {
-        Err(Error::new(ErrorKind::UnexpectedEof,
-                       "failed to fill whole buffer"))
+        Err(Error::new(
+            ErrorKind::UnexpectedEof,
+            "failed to fill whole buffer",
+        ))
     } else {
         Ok(())
     }
@@ -37,7 +46,10 @@ impl<R: Read> Decoder<R> {
     /// Construct a new `Decoder` that reads encoded packets from
     /// `inner`.
     pub fn new(inner: R, follow: bool) -> Decoder<R> {
-        Decoder::<R> { inner: inner, follow: follow}
+        Decoder::<R> {
+            inner: inner,
+            follow: follow,
+        }
     }
 
     // TODO: If we need config for the Decoder, my plan is to:
@@ -105,8 +117,11 @@ pub fn from_slice(s: &[u8]) -> Result<Packet, failure::Error> {
 #[cfg(test)]
 mod tests {
     use super::from_slice;
-    use error::{Error, ErrorKind, Result};
+
+    use failure;
+
     use packet::{Kind, Packet};
+    use Error;
 
     #[test]
     fn header() {
@@ -168,36 +183,45 @@ mod tests {
 
     #[test]
     fn unknown_header() {
-        let p = try_decode_one(&[0x00]);
-        match p {
-            Err(Error(ErrorKind::UnknownHeader(0x00), _)) => (),
-            _ => panic!(),
+        if let Err(e) = try_decode_one(&[0x00]) {
+            match e.downcast_ref::<Error>() {
+                Some(Error::UnknownHeader { byte: 0 }) => return (),
+                _ => {}
+            }
         }
+
+        panic!()
     }
 
     #[test]
     fn eof_before_payload() {
-        let p = try_decode_one(&[0x01 /* Missing payload bytes */]);
-        match p {
-            Err(Error(ErrorKind::EofDuringPacket, _)) => (),
-            _ => panic!(),
+        if let Err(e) = try_decode_one(&[0x01 /* Missing payload bytes */]) {
+            match e.downcast_ref::<Error>() {
+                Some(Error::EofDuringPacket) => return (),
+                _ => {}
+            }
         }
+
+        panic!()
     }
 
     #[test]
     fn eof_before_packet() {
-        let p = try_decode_one(&[/* Missing packet bytes */]);
-        match p {
-            Err(Error(ErrorKind::EofBeforePacket, _)) => (),
-            _ => panic!(),
+        if let Err(e) = try_decode_one(&[/* Missing packet bytes */]) {
+            match e.downcast_ref::<Error>() {
+                Some(Error::EofBeforePacket) => return (),
+                _ => {}
+            }
         }
+
+        panic!()
     }
 
     fn decode_one(data: &[u8]) -> Packet {
         try_decode_one(data).unwrap()
     }
 
-    fn try_decode_one(data: &[u8]) -> Result<Packet> {
+    fn try_decode_one(data: &[u8]) -> Result<Packet, failure::Error> {
         let p = from_slice(data);
         println!("{:#?}", p);
         p
