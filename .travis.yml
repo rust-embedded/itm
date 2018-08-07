@@ -1,56 +1,20 @@
-# Based on the "trust" template v0.1.2
-# https://github.com/japaric/trust/tree/v0.1.2
-
-dist: trusty
 language: rust
-services: docker
-sudo: required
-
-env:
-  global:
-    - CRATE_NAME=itm
 
 matrix:
-  # TODO These are all the build jobs. Adjust as necessary. Comment out what you
-  # don't need
   include:
-    # Linux
-    - env: TARGET=i686-unknown-linux-gnu
-    - env: TARGET=i686-unknown-linux-musl
     - env: TARGET=x86_64-unknown-linux-gnu
-    - env: TARGET=x86_64-unknown-linux-musl
-
-    # OSX
-    - env: TARGET=i686-apple-darwin
-      os: osx
-    - env: TARGET=x86_64-apple-darwin
-      os: osx
+      if: (branch = staging OR branch = trying) OR (type = pull_request AND branch = master)
 
 before_install:
   - set -e
-  - rustup self update
 
 install:
-  - sh ci/install.sh
-  - source ~/.cargo/env || true
+  - bash ci/install.sh
 
 script:
   - bash ci/script.sh
 
 after_script: set +e
-
-before_deploy:
-  - sh ci/before_deploy.sh
-
-deploy:
-  api_key:
-    secure: 1DhCSm5VHF9WKDqfpfAQZJDlUC7radCwsRpa8MEGbWTOYc0J5ZMV1ZCd20M1JDGVJO5cT5Eopo/eiB33qb/cppiFOGZYOSRgCRmwUHSmWWKR4xIzowlkgBk2/eXntYuP88EwQyw4u4cblT6KoicgBA3niuWuFQFN+yjgvbrq5JSaziuQwHvqc4R+OrKLjsJKc7/OK7O+hLjzGMZVvwgvg0NDiVjACUVzRnnr2ONs+gbr/pYXTVjG7tafX9xfzb+bjmAj9W6ID4Fgn20R7S/id6/Iqd53BG/tmstJ33tuC7didV5o1FDblRwqjw7r4lMknIhfNpRLQFAPcQhukssteDIrKwVA/XTDlvqKSEV417XSOILDWupdmri/OhhEH8GjHL3JaK8BFDep5E4j2Sx4Ee8XHDh7Lmx0Tdi4tm491CNGtHDfNc2fhpGpi8hTvA+KDR85Xyd/JbNsIi0faT4zUGWfdjgm60XVhSUviAaeBUdav+wX51PkiF2Am8Io/IEDNCtZ6CsO37qnUMG/5hQ5SeIlXlc0rAY3Qp8H5PpztZkXYXB0/w3yGS70Y9r60QQZeqQt64/qdFuvTNCF8vbEEXzE1WMoT+/ou+ITwXeGb7BWekJpRCG9qla/ro1Z7yIHBft6qYcqh4+kxIdKbWvLwq12epy1xrH585jawpg524E=
-  file: $CRATE_NAME-$TRAVIS_TAG-$TARGET.*
-  on:
-    condition: $TRAVIS_RUST_VERSION = stable
-    tags: true
-  provider: releases
-  skip_cleanup: true
 
 cache: cargo
 before_cache:
@@ -59,8 +23,7 @@ before_cache:
 
 branches:
   only:
-    # release tags
-    - /^v\d+\.\d+\.\d+.*$/
+    - master
     - staging
     - trying
 
