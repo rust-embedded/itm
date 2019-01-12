@@ -1,5 +1,8 @@
 [package]
-authors = ["Jorge Aparicio <jorge@japaric.io>"]
+authors = [
+    "The Cortex-M Team <cortex-m@teams.rust-embedded.org>",
+    "Jorge Aparicio <jorge@japaric.io>",
+]
 build = "build.rs"
 description = "Tool to parse and dump ITM packets"
 documentation = "https://docs.rs/itm"
