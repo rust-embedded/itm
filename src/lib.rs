@@ -84,6 +84,7 @@
 #![deny(missing_docs)]
 #![deny(warnings)]
 
+extern crate byteorder;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
@@ -107,10 +108,27 @@ pub enum Error {
     #[fail(display = "end of file during packet")]
     EofDuringPacket,
 
+    /// malformed packet
+    #[fail(display = "malformed packet with header `{}`", header)]
+    MalformedPacket {
+        /// header of the malformed packet
+        header: u8,
+        // TODO to add this we have to remove the `Copy` derive
+        // payload: Vec<u8>,
+    },
+
+    // TODO remove this error; it was being used for cases we don't handle
     /// unknown header
     #[fail(display = "unknown header byte: {:x}", byte)]
     UnknownHeader {
         /// unknown header byte
+        byte: u8,
+    },
+
+    /// reserved header
+    #[fail(display = "reserved header byte: {:x}", byte)]
+    ReservedHeader {
+        /// reserved header byte
         byte: u8,
     },
 }
