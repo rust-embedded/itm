@@ -20,7 +20,7 @@ use std::io::{self, ErrorKind, Read};
 
 use byteorder::{ByteOrder, LE};
 use either::Either;
-use failure_derive::Fail;
+use thiserror::Error;
 
 use crate::packet::{
     DataTraceAddress, DataTraceDataValue, DataTracePcValue, EventCounter, ExceptionTrace, Function,
@@ -156,17 +156,17 @@ where
 }
 
 /// ITM packet decoding errors
-#[derive(Debug, Fail)]
+#[derive(Debug, Error)]
 pub enum Error {
     /// The packet starts with a reserved header byte
-    #[fail(display = "reserved header byte: {}", byte)]
+    #[error("reserved header byte: {byte}")]
     ReservedHeader {
         /// The header byte
         byte: u8,
     },
 
     /// The packet doesn't adhere to the (ARMv7-M) specification
-    #[fail(display = "malformed packet of length {} with header: {}", len, header)]
+    #[error("malformed packet of length {len} with header {header}")]
     MalformedPacket {
         /// The header of the malformed packet
         header: u8,
