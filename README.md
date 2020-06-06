@@ -13,7 +13,7 @@ This project is developed and maintained by the [Cortex-M team][team].
 
 ## Minimum Supported Rust Version (MSRV)
 
-This crate is guaranteed to compile on stable Rust 1.32.0 and up. It *might*
+This crate is guaranteed to compile on stable Rust 1.38.0 and up. It *might*
 compile with older versions but that may change in any new patch release.
 
 ## License
