@@ -11,10 +11,10 @@ This project is developed and maintained by the [Cortex-M team][team].
 
 ## [Documentation](https://docs.rs/crate/itm)
 
-## How to install tool `itmdump`
+## How to install `itmdump`
 
 ```shell
-# install tool `itmdump`
+# Install `itmdump` tool
 $ cargo install itm
 
 # Check installation
