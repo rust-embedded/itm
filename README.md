@@ -11,6 +11,16 @@ This project is developed and maintained by the [Cortex-M team][team].
 
 ## [Documentation](https://docs.rs/crate/itm)
 
+## How to install `itmdump`
+
+```shell
+# Install `itmdump` tool
+$ cargo install itm
+
+# Check installation
+$ itmdump --version
+```
+
 ## Minimum Supported Rust Version (MSRV)
 
 This crate is guaranteed to compile on stable Rust 1.38.0 and up. It *might*
