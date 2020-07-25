@@ -145,6 +145,16 @@ where
         }
     }
 
+    /// Gets a reference to the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        &self.reader
+    }
+
+    /// Gets a mutable reference to the underlying reader.
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.reader
+    }
+
     // like `slice.rotate_left` but doesn't touch the unused parts of the buffer
     fn rotate_left(&mut self, shift: usize) {
         for i in 0..self.len - shift {
