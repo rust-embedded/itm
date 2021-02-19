@@ -13,6 +13,152 @@ use std::collections::VecDeque;
 
 use scroll::Pread;
 
+/// The set of possible packet types that may be decoded.
+///
+/// (armv7m) would suggest an implementation of two enum types
+#[derive(Debug, Clone, PartialEq)]
+pub enum ITMPacket {
+    // Synchronization packet category (Appendix D4, p. 782)
+    /// A synchronization packet is a unique pattern in the bitstream.
+    /// It is identified and used to provide the alignment of other
+    /// packet bytes in the bitstream. (armv7m, Appendix D4.2.1)
+    Sync,
+
+    // Protocol packet category (Appendix D4, p. 782)
+    /// Found in the bitstream if
+    ///
+    /// - Software has written to an ITM stimulus port register when the
+    /// stimulus port output buffer is full.
+    ///
+    /// - The DWT attempts to generate a hardware source packet when the
+    /// DWT output buffer is full.
+    ///
+    /// - The local timestamp counter overflows.
+    ///
+    /// See (armv7m, Appendix D4.2.3).
+    Overflow,
+
+    /// A delta timestamp that measures the interval since the
+    /// generation of the last local timestamp and its relation to the
+    /// corresponding ITM/DWT data packets. (armv7m, Appendix D4.2.4)
+    LocalTimestamp1 {
+        /// Indicates relationship with corresponding ITM/DWT data
+        /// packet.
+        tc: usize,
+
+        /// Timestamp value.
+        ts: usize,
+    },
+
+    /// A smaller-interval delta timestamp that measures the interval
+    /// since the generation of the last local timestamp which is
+    /// synchronous with corresponding ITM/DWT data packets. (armv7m,
+    /// Appendix D4.2.4)
+    LocalTimestamp2 {
+        /// Timestamp value.
+        ts: usize, // must not be 0b000 or 0b111
+    },
+
+    /// An absolute timestamp based on the global timestamp clock that
+    /// contain the lower-order bits. (armv7m, Appendix D4.2.5)
+    GlobalTimestamp1 {
+        /// Timestamp value.
+        ts: usize,
+
+        /// Set if higher order bits output by the last GTS2 have
+        /// changed.
+        wrap: bool,
+
+        /// Set if the system has asserted a clock change input to the
+        /// processor since the last generated global timestamp.
+        clkch: bool,
+    },
+
+    /// An absolute timestamp based on the global timestamp clock that
+    /// contain the higher-order bits. (armv7m, Appendix D4.2.5)
+    GlobalTimestamp2 {
+        /// Timestamp value.
+        ts: usize,
+    },
+
+    /// A packet that provides additional information about the
+    /// identified source (one of two possible, theoretically). On
+    /// ARMv7-M this packet is only used to denote on which ITM stimulus
+    /// port a payload was written. (armv7m, Appendix D4.2.6)
+    ///
+    /// TODO: change this to the type only armv7 uses?
+    Extension {
+        /// Information source bit.
+        sh: bool,
+
+        /// Extension information.
+        ex: usize,
+    },
+
+    // Source packet category
+    /// Contains the payload written to the ITM stimulus ports.
+    Instrumentation {
+        /// Stimulus port number.
+        port: usize,
+
+        /// Instrumentation data written to the stimulus port.
+        payload: Vec<u8>,
+    },
+
+    /// One or more event counters have wrapped. (Appendix D4.3.1)
+    EventCounterWrap {
+        /// POSTCNT wrap (see Appendix C1, p. 732).
+        cyc: bool,
+        /// FOLDCNT wrap (see Appendix C1, p. 734).
+        fold: bool,
+        /// LSUCNT wrap (see Appendix C1, p. 734).
+        lsu: bool,
+        /// SLEEPCNT wrap (see Appendix C1, p. 734).
+        sleep: bool,
+        /// EXCCNT wrap (see Appendix C1, p. 734).
+        exc: bool,
+        /// CPICNT wrap (see Appendix C1, p. 734).
+        cpi: bool,
+    },
+
+    /// The processor has entered, exit, or returned to an exception.
+    /// (Appendix D4.3.2)
+    ExceptionTrace {
+        exception: ExceptionType,
+        action: ExceptionAction,
+    },
+
+    /// Periodic program counter sample. (Appendix D4.3.3)
+    PCSample { pc: u32 },
+
+    /// A DWT comparator matched a program counter (PC) value. (Appendix
+    /// D4.3.4)
+    DataTracePC {
+        /// The comparator number that generated the data.
+        id: usize,
+
+        /// The PC value for the instruction that caused the successful
+        /// address comparison.
+        pc: u32,
+    },
+
+    /// A DWT comparator matched an address. (Appendix D4.3.4)
+    DataTraceAddress {
+        /// The comparator number that generated the data.
+        id: usize,
+
+        /// Address content.
+        address: u16,
+    },
+
+    DataTraceValue {
+        /// The comparator number that generated the data.
+        id: usize,
+        access_type: MemoryAccessType,
+        value: u32,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TracePacket {
     /// A sync package to enable synchronization in the byte stream.
@@ -78,7 +224,7 @@ pub enum TracePacket {
     },
 }
 
-/// This enum denotes the exception action taken by the CPU and is explained in table D4-6.
+/// Denotes the exception action taken by the processor. (Table D4-6)
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExceptionAction {
     Entered,
@@ -86,7 +232,8 @@ pub enum ExceptionAction {
     Returned,
 }
 
-/// This enum denotes the type of exception(interrupt) table D4-6.
+/// Denotes the exception type (interrupt event) of the processor.
+/// (Table B1-4)
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExceptionType {
     Reset,
