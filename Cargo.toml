@@ -1,0 +1,26 @@
+[package]
+name = "itm-decode"
+version = "0.1.0"
+authors = [
+        "Viktor Sonesten <v@tmplt.dev>",
+
+        # Below are the authors of the decoder module from probe-rs
+        # before it was extracted. Found via
+        #
+        #     git shortlog -ens --no-merges -- decoder.rs
+        #
+        # in commit c9c3661.
+        "Adam Greig <adam@adamgreig.com>",
+        "Benedikt Mandelkow <benedikt.mandelkow@rwth-aachen.de>",
+        "Noah Hüsser <yatekii@yatekii.ch>",
+]
+edition = "2018"
+readme = "README.org"
+repository = "https://github.com/tmplt/itm-decode"
+license = "MIT OR Apache-2.0"
+description = "A sans-I/O library for decoding ITM and DWT packets"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+scroll = "0.10.1"
