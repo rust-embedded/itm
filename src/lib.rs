@@ -368,7 +368,7 @@ impl Decoder {
                             //     payload,
                             // );
                             return;
-                        },
+                        }
                         n => ExceptionType::ExternalInterrupt(n as usize),
                     },
                     action: match (payload[1] >> 4) & 0b11 {
@@ -382,7 +382,7 @@ impl Decoder {
                             //     payload,
                             // );
                             return;
-                        },
+                        }
                     },
                 }),
                 2 => self.emit(TracePacket::PcSample {
