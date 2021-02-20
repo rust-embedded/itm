@@ -24,3 +24,4 @@ description = "A sans-I/O library for decoding ITM and DWT packets"
 
 [dependencies]
 scroll = "0.10.1"
+bitmatch = "0.1.1"
