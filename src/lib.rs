@@ -11,9 +11,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use std::collections::VecDeque;
-use scroll::Pread;
 use bitmatch::bitmatch;
+use scroll::Pread;
+use std::collections::VecDeque;
 
 /// The set of possible packet types that may be decoded.
 ///
@@ -222,14 +222,14 @@ pub enum TimestampDataRelation {
     ///
     /// This encoding indicates that the ITM or DWT packet was delayed
     /// relative to other trace output packets.
-    DelayedRelative,            // TODO improve name
+    DelayedRelative, // TODO improve name
 
     /// Output of the ITM or DWT packet corresponding to this Local
     /// timestamp packet is delayed relative to the associated event,
     /// and this Local timestamp packet is delayed relative to the ITM
     /// or DWT data. This is a combined condition of `Delayed` and
     /// `DelayedRelative`.
-    DelayedRelativeRelative,    // TODO improve name
+    DelayedRelativeRelative, // TODO improve name
 }
 
 /// Trace data decoder.
@@ -250,10 +250,10 @@ enum DecoderState {
         payload: Vec<u8>,
         size: usize,
     },
-    DwtData {
-        discriminant: usize,
+    HardwareSource {
+        disc_id: u8,
         payload: Vec<u8>,
-        size: usize,
+        expected_size: usize,
     },
     TimeStamp {
         tc: usize,
@@ -293,13 +293,78 @@ impl Decoder {
     }
 
     fn process_byte(&mut self, b: u8) {
-        match &self.state {
+        // let Maybe(packet) = match self.state ...
+        // self.emit(packet)
+        // self.state = header
+
+        match &mut self.state {
             DecoderState::Header => {
                 self.decode_header(b);
+            }
+            DecoderState::HardwareSource {
+                disc_id,
+                payload,
+                expected_size,
+            } => {
+                payload.push(b);
+                if payload.len() == *expected_size {
+                    let packet = Decoder::handle_hardware_source(*disc_id, payload.to_vec());
+                    self.emit(packet);
+                    self.state = DecoderState::Header;
+                }
             }
             _ => {
                 todo!();
             }
+        }
+    }
+
+    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> TracePacket {
+        match disc_id {
+            0 => {
+                // event counter wrapping
+                todo!();
+            }
+            1 => {
+                let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
+                let function = (payload[1] >> 4) & 0b11;
+                return TracePacket::ExceptionTrace {
+                    exception: match exception_number {
+                        1 => ExceptionType::Reset,
+                        2 => ExceptionType::Nmi,
+                        3 => ExceptionType::HardFault,
+                        4 => ExceptionType::MemManage,
+                        5 => ExceptionType::BusFault,
+                        6 => ExceptionType::UsageFault,
+                        11 => ExceptionType::SVCall,
+                        12 => ExceptionType::DebugMonitor,
+                        14 => ExceptionType::PendSV,
+                        15 => ExceptionType::SysTick,
+                        n if n >= 16 => ExceptionType::ExternalInterrupt(n as usize - 16),
+                        _ => unimplemented!(
+                            "invalid exception number {}. Payload is [{:b}, {:b}]",
+                            exception_number,
+                            payload[0],
+                            payload[1]
+                        ),
+                    },
+                    action: match function {
+                        0b01 => ExceptionAction::Entered,
+                        0b10 => ExceptionAction::Exited,
+                        0b11 => ExceptionAction::Returned,
+                        _ => unimplemented!(),
+                    },
+                };
+            }
+            2 => {
+                // PC sampling
+                todo!();
+            }
+            8..=23 => {
+                // data tracing
+                todo!();
+            }
+            _ => unreachable!(),
         }
     }
 
@@ -320,10 +385,11 @@ impl Decoder {
             // Protocol packet category
             "0111_0000" => {
                 self.emit(TracePacket::Overflow);
+                todo!();
             }
             "11rr_0000" => {
                 // LTS1
-                let _tc = r;    // relationship
+                let _tc = r; // relationship
                 todo!();
             }
             "0ttt_0000" => {
@@ -341,9 +407,9 @@ impl Decoder {
             }
             "ceee_1s00" => {
                 // Extension
-                let _c = c;     // continuation bit
-                let _ex = e;    // extension information ex[2:0]
-                let _sh = s;    // information source bit
+                let _c = c; // continuation bit
+                let _ex = e; // extension information ex[2:0]
+                let _sh = s; // information source bit
 
                 todo!();
             }
@@ -351,17 +417,27 @@ impl Decoder {
             // Source packet category
             "aaaa_a0ss" => {
                 // Instrumentation packet
-                let _a = a;     // the port number
-                let _s = s;     // payload size
+                let _a = a; // the port number
+                let _s = s; // payload size
 
                 todo!();
             }
             "aaaa_a1ss" => {
                 // Hardware source packet
-                let _a = a;     // packet type discriminator ID
-                let _s = s;     // payload size
+                let disc_id = a;
 
-                todo!();
+                if !(0..=2).contains(&disc_id) && !(8..=23).contains(&disc_id) {
+                    unimplemented!("undefined discriminator ID {}", disc_id);
+                }
+
+                self.state = DecoderState::HardwareSource {
+                    disc_id,
+                    payload: vec![],
+                    expected_size: s.into(),
+                };
+            }
+            "hhhh_hhhh" => {
+                unimplemented!("Cannot process unknown header {:b}", h);
             }
         }
     }
