@@ -58,7 +58,7 @@ pub enum TracePacket {
     /// Appendix D4.2.4)
     LocalTimestamp2 {
         /// Timestamp value.
-        ts: usize, // must not be 0b000 or 0b111
+        ts: u8, // must not be 0b000 or 0b111
     },
 
     /// An absolute timestamp based on the global timestamp clock that
@@ -426,8 +426,7 @@ impl Decoder {
             }
             "0ttt_0000" => {
                 // LTS2
-                let _ts = t;
-                todo!();
+                self.emit(TracePacket::LocalTimestamp2 { ts: t })
             }
             "1001_0100" => {
                 // GTS1
