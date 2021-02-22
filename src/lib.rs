@@ -44,12 +44,8 @@ pub enum TracePacket {
     /// generation of the last local timestamp and its relation to the
     /// corresponding ITM/DWT data packets. (armv7m, Appendix D4.2.4)
     LocalTimestamp1 {
-        /// Indicates relationship with corresponding ITM/DWT data
-        /// packet.
-        tc: usize,
-
         /// Timestamp value.
-        ts: usize,
+        ts: u32,
 
         /// Indicates the relationship between the generation of `ts`
         /// and the corresponding ITM or DWT data packet.
@@ -255,9 +251,9 @@ enum DecoderState {
         payload: Vec<u8>,
         expected_size: usize,
     },
-    TimeStamp {
-        tc: usize,
-        ts: Vec<u8>,
+    LocalTimestamp {
+        data_relation: TimestampDataRelation,
+        payload: Vec<u8>,
     },
 }
 
@@ -313,10 +309,36 @@ impl Decoder {
                     self.state = DecoderState::Header;
                 }
             }
+            DecoderState::LocalTimestamp {
+                data_relation,
+                payload,
+            } => {
+                let last_byte = (b >> 7) & 1 == 0;
+                payload.push(b);
+                if last_byte {
+                    let packet =
+                        Decoder::handle_local_timestamp(data_relation.clone(), payload.to_vec());
+                    self.emit(packet);
+                    self.state = DecoderState::Header;
+                }
+            }
             _ => {
                 todo!();
             }
         }
+    }
+
+    fn handle_local_timestamp(
+        data_relation: TimestampDataRelation,
+        payload: Vec<u8>,
+    ) -> TracePacket {
+        let mut ts: u32 = 0;
+        for (i, b) in payload.iter().enumerate() {
+            ts |= ((b & !(1 << 7)) as u32) // mask out continuation bit
+                << (7 * i);
+        }
+
+        TracePacket::LocalTimestamp1 { data_relation, ts }
     }
 
     fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> TracePacket {
@@ -389,8 +411,18 @@ impl Decoder {
             }
             "11rr_0000" => {
                 // LTS1
-                let _tc = r; // relationship
-                todo!();
+                let tc = r; // relationship with corresponding data
+
+                self.state = DecoderState::LocalTimestamp {
+                    data_relation: match tc {
+                        0b00 => TimestampDataRelation::Synced,
+                        0b01 => TimestampDataRelation::Delayed,
+                        0b10 => TimestampDataRelation::DelayedRelative,
+                        0b11 => TimestampDataRelation::DelayedRelativeRelative,
+                        _ => unreachable!(),
+                    },
+                    payload: vec![],
+                };
             }
             "0ttt_0000" => {
                 // LTS2
