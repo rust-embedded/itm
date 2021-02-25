@@ -359,9 +359,15 @@ impl Decoder {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    let packet =
-                        Decoder::handle_local_timestamp(data_relation.clone(), payload.to_vec());
-                    self.emit(packet);
+                    let p: Vec<u8> = payload.to_vec();
+                    let d = data_relation.clone();
+                    self.emit(TracePacket::LocalTimestamp1 {
+                        data_relation: d,
+                        ts: Decoder::extract_timestamp(p, 27),
+                    });
+                    self.state = DecoderState::Header;
+                }
+            }
             DecoderState::GlobalTimestamp1 { payload } => {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
@@ -415,19 +421,6 @@ impl Decoder {
         let mask = !(1 << ((max_len % 7) + 2));
         ts |= (head[0] as u32 & mask) << (7 * rtail.len());
         ts
-    }
-
-    fn handle_local_timestamp(
-        data_relation: TimestampDataRelation,
-        payload: Vec<u8>,
-    ) -> TracePacket {
-        let mut ts: u32 = 0;
-        for (i, b) in payload.iter().enumerate() {
-            ts |= ((b & !(1 << 7)) as u32) // mask out continuation bit
-                << (7 * i);
-        }
-
-        TracePacket::LocalTimestamp1 { data_relation, ts }
     }
 
     fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> TracePacket {
@@ -514,7 +507,7 @@ impl Decoder {
             }
             "0ttt_0000" => {
                 // LTS2
-                self.emit(TracePacket::LocalTimestamp2 { ts: t })
+                self.emit(TracePacket::LocalTimestamp2 { ts: t });
             }
             "1001_0100" => {
                 // GTS1
