@@ -255,6 +255,12 @@ enum DecoderState {
         data_relation: TimestampDataRelation,
         payload: Vec<u8>,
     },
+    GlobalTimestamp1 {
+        payload: Vec<u8>,
+    },
+    GlobalTimestamp2 {
+        payload: Vec<u8>,
+    },
 }
 
 impl Decoder {
@@ -356,6 +362,37 @@ impl Decoder {
                     let packet =
                         Decoder::handle_local_timestamp(data_relation.clone(), payload.to_vec());
                     self.emit(packet);
+            DecoderState::GlobalTimestamp1 { payload } => {
+                let last_byte = (b >> 7) & 1 == 0;
+                payload.push(b);
+                if last_byte {
+                    let payload2: Vec<u8> = payload.to_vec();
+                    let p: Vec<u8> = payload.to_vec();
+                    self.emit(TracePacket::GlobalTimestamp1 {
+                        ts: Decoder::extract_timestamp(payload2, 25) as usize,
+                        clkch: p.last().unwrap() & (1 << 5) == 1,
+                        wrap: p.last().unwrap() & (1 << 6) == 1,
+                    });
+                    self.state = DecoderState::Header;
+                }
+            }
+            DecoderState::GlobalTimestamp2 { payload } => {
+                let last_byte = (b >> 7) & 1 == 0;
+                payload.push(b);
+                // TODO figure out if its a 48b or 64b timestamp
+                if last_byte {
+                    let payload2: Vec<u8> = payload.to_vec();
+                    let payload3: Vec<u8> = payload.to_vec();
+                    self.emit(TracePacket::GlobalTimestamp2 {
+                        ts: Decoder::extract_timestamp(
+                            payload2,
+                            match payload3.len() {
+                                4 => 47 - 26, // 48 bit timestamp
+                                6 => 63 - 26, // 64 bit timestamp
+                                _ => unimplemented!(),
+                            },
+                        ) as usize,
+                    });
                     self.state = DecoderState::Header;
                 }
             }
@@ -363,6 +400,21 @@ impl Decoder {
                 todo!();
             }
         }
+    }
+
+    fn extract_timestamp(payload: Vec<u8>, max_len: u32) -> u32 {
+        // Decode the first N - 1 payload bytes
+        let (rtail, head) = payload.split_at(payload.len() - 1);
+        let mut ts: u32 = 0;
+        for (i, b) in rtail.iter().enumerate() {
+            ts |= ((b & !(1 << 7)) as u32) // mask out continuation bit
+                << (7 * i);
+        }
+
+        // Mask out the timestamp's MSBs
+        let mask = !(1 << ((max_len % 7) + 2));
+        ts |= (head[0] as u32 & mask) << (7 * rtail.len());
+        ts
     }
 
     fn handle_local_timestamp(
@@ -466,11 +518,11 @@ impl Decoder {
             }
             "1001_0100" => {
                 // GTS1
-                todo!();
+                self.state = DecoderState::GlobalTimestamp1 { payload: vec![] };
             }
             "1011_0100" => {
                 // GTS2
-                todo!();
+                self.state = DecoderState::GlobalTimestamp2 { payload: vec![] };
             }
             "ceee_1s00" => {
                 // Extension
