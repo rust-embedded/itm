@@ -297,6 +297,43 @@ impl Decoder {
             DecoderState::Header => {
                 self.decode_header(b);
             }
+            DecoderState::Syncing(count) => {
+                // This packet is at least comprised of 47 zeroes but
+                // mustn't be a multiple of 8 bits. If the first set
+                // bit, that denotes end-of-packet, is not in the 7th
+                // position, ...
+                // for i in 0..8 {
+                //     if b & (1 << i) {
+                //         // put back 7 - i bits at head of stream.
+                //     }
+                // }
+
+                // TODO check that packet contains at least 47 zeroes.
+                // TODO do we need to change to bitvec? Or can we keep
+                // use of a standard Vec<u8>? If we use the former:
+                // - added dep
+                // - some overhead to restructure already written code
+                // - changed public API?
+                // + very easy to handle a sync (we need just push the bits back)
+                //
+                // the latter:
+                //
+                // - difficult sync (up to seven bits in the bitstream's
+                // last byte would be "missing". We would have to keep
+                // tabs on the current alignment in feed(), and appropriately shift any new bytes into the last byte of those incoming (that is, after shifting all incoming first)).
+
+                // For now, just handle smallest possible sync packet
+                if b == 0 && *count < (47 as usize) {
+                    *count += 8;
+                } else if b == 0b1000_0000 {
+                    *count += 7;
+                    assert!(*count == (47 as usize));
+                    self.emit(TracePacket::Sync);
+                    self.state = DecoderState::Header;
+                } else {
+                    todo!();
+                }
+            }
             DecoderState::HardwareSource {
                 disc_id,
                 payload,
@@ -400,8 +437,7 @@ impl Decoder {
         match header {
             // Synchronization packet category
             "0000_0000" => {
-                self.state = DecoderState::Syncing(1);
-                todo!();
+                self.state = DecoderState::Syncing(8);
             }
 
             // Protocol packet category
