@@ -295,13 +295,10 @@ impl Decoder {
     }
 
     fn process_byte(&mut self, b: u8) {
-        // let Maybe(packet) = match self.state ...
-        // self.emit(packet)
-        // self.state = header
-
-        match &mut self.state {
+        let packet = match &mut self.state {
             DecoderState::Header => {
                 self.decode_header(b);
+                None
             }
             DecoderState::Syncing(count) => {
                 // This packet is at least comprised of 47 zeroes but
@@ -331,11 +328,11 @@ impl Decoder {
                 // For now, just handle smallest possible sync packet
                 if b == 0 && *count < (47 as usize) {
                     *count += 8;
+                    None
                 } else if b == 0b1000_0000 {
                     *count += 7;
                     assert!(*count == (47 as usize));
-                    self.emit(TracePacket::Sync);
-                    self.state = DecoderState::Header;
+                    Some(TracePacket::Sync)
                 } else {
                     todo!();
                 }
@@ -347,9 +344,9 @@ impl Decoder {
             } => {
                 payload.push(b);
                 if payload.len() == *expected_size {
-                    let packet = Decoder::handle_hardware_source(*disc_id, payload.to_vec());
-                    self.emit(packet);
-                    self.state = DecoderState::Header;
+                    Some(Decoder::handle_hardware_source(*disc_id, payload.to_vec()))
+                } else {
+                    None
                 }
             }
             DecoderState::LocalTimestamp {
@@ -359,52 +356,53 @@ impl Decoder {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    let p: Vec<u8> = payload.to_vec();
-                    let d = data_relation.clone();
-                    self.emit(TracePacket::LocalTimestamp1 {
-                        data_relation: d,
-                        ts: Decoder::extract_timestamp(p, 27),
-                    });
-                    self.state = DecoderState::Header;
+                    Some(TracePacket::LocalTimestamp1 {
+                        data_relation: data_relation.clone(),
+                        ts: Decoder::extract_timestamp(payload.to_vec(), 27),
+                    })
+                } else {
+                    None
                 }
             }
             DecoderState::GlobalTimestamp1 { payload } => {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    let payload2: Vec<u8> = payload.to_vec();
-                    let p: Vec<u8> = payload.to_vec();
-                    self.emit(TracePacket::GlobalTimestamp1 {
-                        ts: Decoder::extract_timestamp(payload2, 25) as usize,
-                        clkch: p.last().unwrap() & (1 << 5) == 1,
-                        wrap: p.last().unwrap() & (1 << 6) == 1,
-                    });
-                    self.state = DecoderState::Header;
+                    Some(TracePacket::GlobalTimestamp1 {
+                        ts: Decoder::extract_timestamp(payload.to_vec(), 25) as usize,
+                        clkch: payload.last().unwrap() & (1 << 5) == 1,
+                        wrap: payload.last().unwrap() & (1 << 6) == 1,
+                    })
+                } else {
+                    None
                 }
             }
             DecoderState::GlobalTimestamp2 { payload } => {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
-                // TODO figure out if its a 48b or 64b timestamp
                 if last_byte {
-                    let payload2: Vec<u8> = payload.to_vec();
-                    let payload3: Vec<u8> = payload.to_vec();
-                    self.emit(TracePacket::GlobalTimestamp2 {
+                    Some(TracePacket::GlobalTimestamp2 {
                         ts: Decoder::extract_timestamp(
-                            payload2,
-                            match payload3.len() {
+                            payload.to_vec(),
+                            match payload.len() {
                                 4 => 47 - 26, // 48 bit timestamp
                                 6 => 63 - 26, // 64 bit timestamp
                                 _ => unimplemented!(),
                             },
                         ) as usize,
-                    });
-                    self.state = DecoderState::Header;
+                    })
+                } else {
+                    None
                 }
             }
             _ => {
                 todo!();
             }
+        };
+
+        if let Some(packet) = packet {
+            self.emit(packet);
+            self.state = DecoderState::Header;
         }
     }
 
