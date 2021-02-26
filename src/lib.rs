@@ -515,7 +515,6 @@ impl Decoder {
 
             // Protocol packet category
             "0111_0000" => {
-                todo!();
                 return Ok(Some(TracePacket::Overflow));
             }
             "11rr_0000" => {
