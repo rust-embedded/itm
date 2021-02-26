@@ -484,7 +484,16 @@ impl Decoder {
         match disc_id {
             0 => {
                 // event counter wrapping
-                todo!();
+                let b = payload[0];
+
+                Ok(TracePacket::EventCounterWrap {
+                    cyc: b & (1 << 5) != 0,
+                    fold: b & (1 << 4) != 0,
+                    lsu: b & (1 << 3) != 0,
+                    sleep: b & (1 << 2) != 0,
+                    exc: b & (1 << 1) != 0,
+                    cpi: b & (1 << 0) != 0,
+                })
             }
             1 => {
                 if payload.len() != 2 {
