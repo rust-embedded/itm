@@ -454,10 +454,10 @@ impl Decoder {
                 << (7 * i);
         }
 
-        // Mask out the timestamp's MSBs
+        // Mask out the timestamp's MSBs and shift them into the final
+        // value.
         let mask = !(1 << ((max_len % 7) + 2));
-        ts |= (head[0] as u32 & mask) << (7 * rtail.len());
-        ts
+        ts | ((head[0] as u32 & mask) << (7 * rtail.len()))
     }
 
     fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, PayloadError> {
