@@ -228,6 +228,30 @@ pub enum TimestampDataRelation {
     DelayedRelativeRelative, // TODO improve name
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum DecoderError {
+    Header(HeaderError),
+    Payload(PayloadError),
+}
+
+/// Upon this error, decoder should still be in header mode
+#[derive(Debug, Clone, PartialEq)]
+pub enum HeaderError {
+    Invalid(u8),
+    HardwareDisc {
+        disc_id: u8,
+        size: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PayloadError {
+    GTS2(usize),
+
+    /// either exception number or action is invalid
+    ExceptionTrace(u16, u8),
+}
+
 /// Trace data decoder.
 ///
 /// This is a sans-io style decoder.
@@ -277,16 +301,24 @@ impl Decoder {
     }
 
     /// Pull the next item from the decoder.
-    pub fn pull(&mut self) -> Option<TracePacket> {
+    pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
         // Decode bytes until a packet is generated, or until we run out
         // of bytes.
         while let Some(b) = self.incoming.pop_front() {
-            if let Some(packet) = self.process_byte(b) {
-                return Some(packet);
+            match self.process_byte(b) {
+                Ok(Some(packet)) => return Ok(Some(packet)),
+                Ok(None) => continue,
+                Err(e) => {
+                    match e {
+                        DecoderError::Header(_) => assert!(self.state == DecoderState::Header),
+                        DecoderError::Payload(_) => {},
+                    }
+                    return Err(e);
+                },
             }
         }
 
-        None
+        Ok(None)
     }
 
     /// Query the current state of the Decoder. Useful if manual
@@ -295,7 +327,7 @@ impl Decoder {
         (self.state.clone(), self.incoming.clone())
     }
 
-    fn process_byte(&mut self, b: u8) -> Option<TracePacket> {
+    fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
         let packet = match &mut self.state {
             DecoderState::Header => {
                 self.decode_header(b)
@@ -328,11 +360,11 @@ impl Decoder {
                 // For now, just handle smallest possible sync packet
                 if b == 0 && *count < (47 as usize) {
                     *count += 8;
-                    None
+                    Ok(None)
                 } else if b == 0b1000_0000 {
                     *count += 7;
                     assert!(*count == (47 as usize));
-                    Some(TracePacket::Sync)
+                    Ok(Some(TracePacket::Sync))
                 } else {
                     todo!();
                 }
@@ -344,9 +376,15 @@ impl Decoder {
             } => {
                 payload.push(b);
                 if payload.len() == *expected_size {
-                    Some(Decoder::handle_hardware_source(*disc_id, payload.to_vec()))
+                    match Decoder::handle_hardware_source(*disc_id, payload.to_vec()) {
+                        Ok(packet) => Ok(Some(packet)),
+                        Err(e) => {
+                            self.state = DecoderState::Header;
+                            Err(DecoderError::Payload(e))
+                        },
+                    }
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             DecoderState::LocalTimestamp {
@@ -356,43 +394,43 @@ impl Decoder {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    Some(TracePacket::LocalTimestamp1 {
+                    Ok(Some(TracePacket::LocalTimestamp1 {
                         data_relation: data_relation.clone(),
                         ts: Decoder::extract_timestamp(payload.to_vec(), 27),
-                    })
+                    }))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             DecoderState::GlobalTimestamp1 { payload } => {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    Some(TracePacket::GlobalTimestamp1 {
+                    Ok(Some(TracePacket::GlobalTimestamp1 {
                         ts: Decoder::extract_timestamp(payload.to_vec(), 25) as usize,
                         clkch: payload.last().unwrap() & (1 << 5) == 1,
                         wrap: payload.last().unwrap() & (1 << 6) == 1,
-                    })
+                    }))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             DecoderState::GlobalTimestamp2 { payload } => {
                 let last_byte = (b >> 7) & 1 == 0;
                 payload.push(b);
                 if last_byte {
-                    Some(TracePacket::GlobalTimestamp2 {
+                    Ok(Some(TracePacket::GlobalTimestamp2 {
                         ts: Decoder::extract_timestamp(
                             payload.to_vec(),
                             match payload.len() {
                                 4 => 47 - 26, // 48 bit timestamp
                                 6 => 63 - 26, // 64 bit timestamp
-                                _ => unimplemented!(),
+                                n => return Err(DecoderError::Payload(PayloadError::GTS2(n))),
                             },
                         ) as usize,
-                    })
+                    }))
                 } else {
-                    None
+                    Ok(None)
                 }
             }
             _ => {
@@ -400,7 +438,7 @@ impl Decoder {
             }
         };
 
-        if packet.is_some() {
+        if let Ok(Some(_)) = packet {
             self.state = DecoderState::Header;
         }
 
@@ -422,7 +460,7 @@ impl Decoder {
         ts
     }
 
-    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> TracePacket {
+    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, PayloadError> {
         match disc_id {
             0 => {
                 // event counter wrapping
@@ -431,7 +469,7 @@ impl Decoder {
             1 => {
                 let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
                 let function = (payload[1] >> 4) & 0b11;
-                return TracePacket::ExceptionTrace {
+                return Ok(TracePacket::ExceptionTrace {
                     exception: match exception_number {
                         1 => ExceptionType::Reset,
                         2 => ExceptionType::Nmi,
@@ -444,20 +482,15 @@ impl Decoder {
                         14 => ExceptionType::PendSV,
                         15 => ExceptionType::SysTick,
                         n if n >= 16 => ExceptionType::ExternalInterrupt(n as usize - 16),
-                        _ => unimplemented!(
-                            "invalid exception number {}. Payload is [{:b}, {:b}]",
-                            exception_number,
-                            payload[0],
-                            payload[1]
-                        ),
+                        _ => return Err(PayloadError::ExceptionTrace(exception_number, function)),
                     },
                     action: match function {
                         0b01 => ExceptionAction::Entered,
                         0b10 => ExceptionAction::Exited,
                         0b11 => ExceptionAction::Returned,
-                        _ => unimplemented!(),
+                        _ => return Err(PayloadError::ExceptionTrace(exception_number, function)),
                     },
-                };
+                });
             }
             2 => {
                 // PC sampling
@@ -472,7 +505,7 @@ impl Decoder {
     }
 
     #[bitmatch]
-    fn decode_header(&mut self, header: u8) -> Option<TracePacket> {
+    fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, DecoderError> {
         #[bitmatch]
         match header {
             // Synchronization packet category
@@ -483,7 +516,7 @@ impl Decoder {
             // Protocol packet category
             "0111_0000" => {
                 todo!();
-                return Some(TracePacket::Overflow);
+                return Ok(Some(TracePacket::Overflow));
             }
             "11rr_0000" => {
                 // LTS1
@@ -502,7 +535,7 @@ impl Decoder {
             }
             "0ttt_0000" => {
                 // LTS2
-                return Some(TracePacket::LocalTimestamp2 { ts: t });
+                return Ok(Some(TracePacket::LocalTimestamp2 { ts: t }));
             }
             "1001_0100" => {
                 // GTS1
@@ -534,7 +567,7 @@ impl Decoder {
                 let disc_id = a;
 
                 if !(0..=2).contains(&disc_id) && !(8..=23).contains(&disc_id) {
-                    unimplemented!("undefined discriminator ID {}", disc_id);
+                    return Err(DecoderError::Header(HeaderError::HardwareDisc { disc_id, size: s.into() }));
                 }
 
                 self.state = DecoderState::HardwareSource {
@@ -544,11 +577,11 @@ impl Decoder {
                 };
             }
             "hhhh_hhhh" => {
-                unimplemented!("Cannot process unknown header {:b}", h);
+                return Err(DecoderError::Header(HeaderError::Invalid(h)))
             }
         }
 
-        None
+        Ok(None)
     }
 }
 
