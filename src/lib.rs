@@ -14,6 +14,7 @@
 use bitmatch::bitmatch;
 use scroll::Pread;
 use std::collections::VecDeque;
+use std::convert::TryInto;
 
 /// The set of possible packet types that may be decoded.
 ///
@@ -126,7 +127,10 @@ pub enum TracePacket {
     },
 
     /// Periodic program counter sample. (Appendix D4.3.3)
-    PCSample { pc: u32 },
+    PCSample {
+        /// `None` if periodic PC sleep packet.
+        pc: Option<u32>,
+    },
 
     /// A DWT comparator matched a program counter (PC) value. (Appendix
     /// D4.3.4)
@@ -253,6 +257,8 @@ pub enum PayloadError {
 
     /// either exception number or action is invalid
     ExceptionTrace(u16, u8),
+
+    PCSample(Vec<u8>),
 }
 
 /// Trace data decoder.
@@ -507,7 +513,13 @@ impl Decoder {
             }
             2 => {
                 // PC sampling
-                todo!();
+                match payload.len() {
+                    1 if payload[0] == 0 => Ok(TracePacket::PCSample { pc: None }),
+                    4 => Ok(TracePacket::PCSample {
+                        pc: Some(u32::from_le_bytes(payload.try_into().unwrap())),
+                    }),
+                    _ => Err(PayloadError::PCSample(payload)),
+                }
             }
             8..=23 => {
                 // data tracing
