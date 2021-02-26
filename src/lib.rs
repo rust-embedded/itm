@@ -500,7 +500,7 @@ impl Decoder {
                 // data tracing
                 todo!();
             }
-            _ => unreachable!(),
+            _ => unreachable!(), // we already verify the discriminator when we decode the header
         }
     }
 
