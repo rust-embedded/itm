@@ -237,7 +237,8 @@ pub struct Decoder {
     state: DecoderState,
 }
 
-enum DecoderState {
+#[derive(Debug, Clone, PartialEq)]
+pub enum DecoderState {
     Header,
     Syncing(usize),
     ItmData {
@@ -288,6 +289,11 @@ impl Decoder {
         None
     }
 
+    /// Query the current state of the Decoder. Useful if manual
+    /// intervention is required.
+    pub fn current_state(&self) -> (DecoderState, VecDeque<u8>) {
+        (self.state.clone(), self.incoming.clone())
+    }
 
     fn process_byte(&mut self, b: u8) -> Option<TracePacket> {
         let packet = match &mut self.state {
