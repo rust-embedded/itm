@@ -87,14 +87,9 @@ pub enum TracePacket {
     /// identified source (one of two possible, theoretically). On
     /// ARMv7-M this packet is only used to denote on which ITM stimulus
     /// port a payload was written. (armv7m, Appendix D4.2.6)
-    ///
-    /// TODO: change this to the type only armv7 uses?
     Extension {
-        /// Information source bit.
-        sh: bool,
-
-        /// Extension information.
-        ex: usize,
+        /// Source port page number
+        page: u8,
     },
 
     // Source packet category
@@ -562,13 +557,9 @@ impl Decoder {
                 // GTS2
                 self.state = DecoderState::GlobalTimestamp2 { payload: vec![] };
             }
-            "ceee_1s00" => {
+            "0ppp_1000" => {
                 // Extension
-                let _c = c; // continuation bit
-                let _ex = e; // extension information ex[2:0]
-                let _sh = s; // information source bit
-
-                todo!();
+                return Ok(Some(TracePacket::Extension { page: p }));
             }
 
             // Source packet category
