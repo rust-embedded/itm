@@ -319,10 +319,10 @@ impl Decoder {
                 Err(e) => {
                     match e {
                         DecoderError::Header(_) => assert!(self.state == DecoderState::Header),
-                        DecoderError::Payload(_) => {},
+                        DecoderError::Payload(_) => {}
                     }
                     return Err(e);
-                },
+                }
             }
         }
 
@@ -337,9 +337,7 @@ impl Decoder {
 
     fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
         let packet = match &mut self.state {
-            DecoderState::Header => {
-                self.decode_header(b)
-            }
+            DecoderState::Header => self.decode_header(b),
             DecoderState::Syncing(count) => {
                 // This packet is at least comprised of 47 zeroes but
                 // mustn't be a multiple of 8 bits. If the first set
@@ -389,7 +387,7 @@ impl Decoder {
                         Err(e) => {
                             self.state = DecoderState::Header;
                             Err(DecoderError::Payload(e))
-                        },
+                        }
                     }
                 } else {
                     Ok(None)
@@ -441,7 +439,11 @@ impl Decoder {
                     Ok(None)
                 }
             }
-            DecoderState::Instrumentation { port, payload, expected_size } => {
+            DecoderState::Instrumentation {
+                port,
+                payload,
+                expected_size,
+            } => {
                 payload.push(b);
                 if payload.len() == *expected_size {
                     Ok(Some(TracePacket::Instrumentation {
@@ -593,7 +595,10 @@ impl Decoder {
                 let disc_id = a;
 
                 if !(0..=2).contains(&disc_id) && !(8..=23).contains(&disc_id) {
-                    return Err(DecoderError::Header(HeaderError::HardwareDisc { disc_id, size: s.into() }));
+                    return Err(DecoderError::Header(HeaderError::HardwareDisc {
+                        disc_id,
+                        size: s.into(),
+                    }));
                 }
 
                 self.state = DecoderState::HardwareSource {
@@ -602,9 +607,7 @@ impl Decoder {
                     expected_size: s.into(),
                 };
             }
-            "hhhh_hhhh" => {
-                return Err(DecoderError::Header(HeaderError::Invalid(h)))
-            }
+            "hhhh_hhhh" => return Err(DecoderError::Header(HeaderError::Invalid(h))),
         }
 
         Ok(None)
