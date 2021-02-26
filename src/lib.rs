@@ -101,7 +101,7 @@ pub enum TracePacket {
     /// Contains the payload written to the ITM stimulus ports.
     Instrumentation {
         /// Stimulus port number.
-        port: usize,
+        port: u8,
 
         /// Instrumentation data written to the stimulus port.
         payload: Vec<u8>,
@@ -242,6 +242,14 @@ pub enum HeaderError {
         disc_id: u8,
         size: usize,
     },
+
+    /// Invalid payload size
+    InstumentationSize {
+        port: u8,
+
+        /// including the header byte
+        expected_size: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -265,10 +273,10 @@ pub struct Decoder {
 pub enum DecoderState {
     Header,
     Syncing(usize),
-    ItmData {
-        id: usize,
+    Instrumentation {
+        port: u8,
         payload: Vec<u8>,
-        size: usize,
+        expected_size: usize,
     },
     HardwareSource {
         disc_id: u8,
@@ -433,8 +441,16 @@ impl Decoder {
                     Ok(None)
                 }
             }
-            _ => {
-                todo!();
+            DecoderState::Instrumentation { port, payload, expected_size } => {
+                payload.push(b);
+                if payload.len() == *expected_size {
+                    Ok(Some(TracePacket::Instrumentation {
+                        port: *port,
+                        payload: payload.to_vec(),
+                    }))
+                } else {
+                    Ok(None)
+                }
             }
         };
 
@@ -556,10 +572,21 @@ impl Decoder {
             // Source packet category
             "aaaa_a0ss" => {
                 // Instrumentation packet
-                let _a = a; // the port number
-                let _s = s; // payload size
-
-                todo!();
+                self.state = DecoderState::Instrumentation {
+                    port: a,
+                    payload: vec![],
+                    expected_size: match s {
+                        0b01 => 2,
+                        0b10 => 3,
+                        0b11 => 5,
+                        _ => {
+                            return Err(DecoderError::Header(HeaderError::InstumentationSize {
+                                port: a,
+                                expected_size: s.into(),
+                            }))
+                        }
+                    } - 1, // header byte already processed
+                };
             }
             "aaaa_a1ss" => {
                 // Hardware source packet
