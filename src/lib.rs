@@ -259,6 +259,7 @@ pub enum PayloadError {
     ExceptionTrace(u16, u8),
 
     PCSample(Vec<u8>),
+    Exception(Vec<u8>),
 }
 
 /// Trace data decoder.
@@ -486,6 +487,10 @@ impl Decoder {
                 todo!();
             }
             1 => {
+                if payload.len() != 2 {
+                    return Err(PayloadError::Exception(payload));
+                }
+
                 let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
                 let function = (payload[1] >> 4) & 0b11;
                 return Ok(TracePacket::ExceptionTrace {
