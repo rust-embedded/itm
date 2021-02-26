@@ -234,7 +234,6 @@ pub enum TimestampDataRelation {
 /// See also: https://sans-io.readthedocs.io/how-to-sans-io.html
 pub struct Decoder {
     incoming: VecDeque<u8>,
-    packets: VecDeque<TracePacket>,
     state: DecoderState,
 }
 
@@ -267,7 +266,6 @@ impl Decoder {
     pub fn new() -> Self {
         Decoder {
             incoming: VecDeque::new(),
-            packets: VecDeque::new(),
             state: DecoderState::Header,
         }
     }
@@ -277,28 +275,24 @@ impl Decoder {
         self.incoming.extend(&data)
     }
 
-    fn next_byte(&mut self) -> Option<u8> {
-        self.incoming.pop_front()
-    }
-
     /// Pull the next item from the decoder.
     pub fn pull(&mut self) -> Option<TracePacket> {
-        // Process any bytes:
-        self.process_incoming(); // reads all bytes in incoming, puts TracePackets in packets
-        self.packets.pop_front() // pops the latest TracePacket to the API user
-    }
-
-    fn process_incoming(&mut self) {
-        while let Some(b) = self.next_byte() {
-            self.process_byte(b);
+        // Decode bytes until a packet is generated, or until we run out
+        // of bytes.
+        while let Some(b) = self.incoming.pop_front() {
+            if let Some(packet) = self.process_byte(b) {
+                return Some(packet);
+            }
         }
+
+        None
     }
 
-    fn process_byte(&mut self, b: u8) {
+
+    fn process_byte(&mut self, b: u8) -> Option<TracePacket> {
         let packet = match &mut self.state {
             DecoderState::Header => {
-                self.decode_header(b);
-                None
+                self.decode_header(b)
             }
             DecoderState::Syncing(count) => {
                 // This packet is at least comprised of 47 zeroes but
@@ -400,10 +394,11 @@ impl Decoder {
             }
         };
 
-        if let Some(packet) = packet {
-            self.emit(packet);
+        if packet.is_some() {
             self.state = DecoderState::Header;
         }
+
+        packet
     }
 
     fn extract_timestamp(payload: Vec<u8>, max_len: u32) -> u32 {
@@ -470,12 +465,8 @@ impl Decoder {
         }
     }
 
-    fn emit(&mut self, packet: TracePacket) {
-        self.packets.push_back(packet);
-    }
-
     #[bitmatch]
-    fn decode_header(&mut self, header: u8) {
+    fn decode_header(&mut self, header: u8) -> Option<TracePacket> {
         #[bitmatch]
         match header {
             // Synchronization packet category
@@ -485,8 +476,8 @@ impl Decoder {
 
             // Protocol packet category
             "0111_0000" => {
-                self.emit(TracePacket::Overflow);
                 todo!();
+                return Some(TracePacket::Overflow);
             }
             "11rr_0000" => {
                 // LTS1
@@ -505,7 +496,7 @@ impl Decoder {
             }
             "0ttt_0000" => {
                 // LTS2
-                self.emit(TracePacket::LocalTimestamp2 { ts: t });
+                return Some(TracePacket::LocalTimestamp2 { ts: t });
             }
             "1001_0100" => {
                 // GTS1
@@ -550,6 +541,8 @@ impl Decoder {
                 unimplemented!("Cannot process unknown header {:b}", h);
             }
         }
+
+        None
     }
 }
 
