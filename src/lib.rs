@@ -6,7 +6,8 @@ use std::convert::TryInto;
 
 /// The set of possible packet types that may be decoded.
 ///
-/// (armv7m) would suggest an implementation of two enum types
+/// (armv7m) would suggest an implementation of two enum types, but that
+/// possible structure is here flattened to simplify the implementation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TracePacket {
     // Synchronization packet category (Appendix D4, p. 782)
@@ -151,8 +152,13 @@ pub enum TracePacket {
 /// Denotes the exception action taken by the processor. (Table D4-6)
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExceptionAction {
+    /// Exception was entered.
     Entered,
+
+    /// Exception was exited.
     Exited,
+
+    /// Exception was returned to.
     Returned,
 }
 
@@ -176,7 +182,10 @@ pub enum ExceptionType {
 /// This enum denotes the type of memory access.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemoryAccessType {
+    /// Memory was read.
     Read,
+
+    /// Memory was written.
     Write,
 }
 
@@ -215,6 +224,9 @@ pub enum TimestampDataRelation {
     DelayedRelativeRelative, // TODO improve name
 }
 
+/// A header or payload byte failed to be decoded. The state of the
+/// decoder is now in an unknown state and manual intervention is
+/// required.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderError {
     /// Header is invalid and cannot be decoded.
@@ -226,8 +238,7 @@ pub enum DecoderError {
         /// The discriminator ID. Potentially invalid.
         disc_id: u8,
 
-        /// Associated payload. Potentially invalid length. Empty if
-        /// `disc_id` is invalid.
+        /// Associated payload. Potentially invalid length.
         payload: Vec<u8>,
     },
 
@@ -272,42 +283,63 @@ pub enum DecoderError {
     InvalidSyncSize(usize),
 }
 
-/// Trace data decoder.
+/// Intrumentation Trace Macrocell (ITM) data packet decoder.
 ///
 /// This is a sans-io style decoder.
 /// See also: https://sans-io.readthedocs.io/how-to-sans-io.html
 pub struct Decoder {
-    /// public because manual intervention may be necessary
+    /// The incoming bytes to the decoder. Public because manual
+    /// intervention is required upon eventual decode error.
     pub incoming: BitVec,
 
-    /// public because manual intervention may be necessary
+    /// The current state of the decoder. Public because manual
+    /// intervention is required upon eventual decode error.
     pub state: DecoderState,
 }
 
+/// The decoder's possible states. The default decoder state is `Header`
+/// and will always return there after a maximum of two steps. (E.g. if
+/// the current state is `Syncing` or `HardwareSource`, the next state
+/// is `Header` again.)
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderState {
+    /// Next byte will be decoded as a header byte.
     Header,
+
+    /// Next zero bits will be assumed to be part of a a Synchronization
+    /// packet until a one is encountered.
     Syncing(usize),
+
+    /// Next bytes will be assumed to be part of an Instrumentation
+    /// packet, until `payload` contains `expected_size` bytes.
     Instrumentation {
         port: u8,
         payload: Vec<u8>,
         expected_size: usize,
     },
+
+    /// Next bytes will be assumed to be part of a Hardware source
+    /// packet, until `payload` contains `expected_size` bytes.
     HardwareSource {
         disc_id: u8,
         payload: Vec<u8>,
         expected_size: usize,
     },
+
+    /// Next bytes will be assumed to be part of a LocalTimestamp{1,2}
+    /// packet, until the most significant bit is set.
     LocalTimestamp {
         data_relation: TimestampDataRelation,
         payload: Vec<u8>,
     },
-    GlobalTimestamp1 {
-        payload: Vec<u8>,
-    },
-    GlobalTimestamp2 {
-        payload: Vec<u8>,
-    },
+
+    /// Next bytes will be assumed to be part of a GlobalTimestamp1
+    /// packet, until the most significant bit is set.
+    GlobalTimestamp1 { payload: Vec<u8> },
+
+    /// Next bytes will be assumed to be part of a GlobalTimestamp2
+    /// packet, until the most significant bit is set.
+    GlobalTimestamp2 { payload: Vec<u8> },
 }
 
 impl Decoder {
