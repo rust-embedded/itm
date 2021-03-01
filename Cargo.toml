@@ -3,16 +3,6 @@ name = "itm-decode"
 version = "0.1.0"
 authors = [
         "Viktor Sonesten <v@tmplt.dev>",
-
-        # Below are the authors of the decoder module from probe-rs
-        # before it was extracted. Found via
-        #
-        #     git shortlog -ens --no-merges -- decoder.rs
-        #
-        # in commit c9c3661.
-        "Adam Greig <adam@adamgreig.com>",
-        "Benedikt Mandelkow <benedikt.mandelkow@rwth-aachen.de>",
-        "Noah Hüsser <yatekii@yatekii.ch>",
 ]
 edition = "2018"
 readme = "README.org"

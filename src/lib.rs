@@ -1,13 +1,4 @@
-//! This code was initially written by https://github.com/windelbouwman.
-//! It was moved to the probe-rs project in accordance with him.
-//!
-//! Additions and fixes have been made thereafter.
-//!
-//! Trace protocol for the SWO pin.
-//!
 //! Refer to appendix D4 in the ARMv7-M architecture reference manual.
-//! Also a good reference is itmdump.c from openocd:
-//! https://github.com/arduino/OpenOCD/blob/master/contrib/itmdump.c
 
 use bitmatch::bitmatch;
 use std::collections::VecDeque;
