@@ -256,8 +256,11 @@ pub enum PayloadError {
 /// This is a sans-io style decoder.
 /// See also: https://sans-io.readthedocs.io/how-to-sans-io.html
 pub struct Decoder {
-    incoming: VecDeque<u8>,
-    state: DecoderState,
+    /// public because manual intervention may be necessary
+    pub incoming: VecDeque<u8>,
+
+    /// public because manual intervention may be necessary
+    pub state: DecoderState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -318,12 +321,6 @@ impl Decoder {
         }
 
         Ok(None)
-    }
-
-    /// Query the current state of the Decoder. Useful if manual
-    /// intervention is required.
-    pub fn current_state(&self) -> (DecoderState, VecDeque<u8>) {
-        (self.state.clone(), self.incoming.clone())
     }
 
     fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
