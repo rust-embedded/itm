@@ -217,41 +217,59 @@ pub enum TimestampDataRelation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DecoderError {
-    Header(HeaderError),
-    Payload(PayloadError),
-}
+    /// Header is invalid and cannot be decoded.
+    InvalidHeader(u8),
 
-/// Upon this error, decoder should still be in header mode
-#[derive(Debug, Clone, PartialEq)]
-pub enum HeaderError {
-    Invalid(u8),
-    HardwareDisc {
+    /// The type discriminator ID in the hardware source packet header
+    /// is invalid or the associated payload is of wrong size.
+    InvalidHardwarePacket {
+        /// The discriminator ID. Potentially invalid.
         disc_id: u8,
+
+        /// Associated payload. Potentially invalid length. Empty if
+        /// `disc_id` is invalid.
+        payload: Vec<u8>,
+    },
+
+    /// The type discriminator ID in the hardware source packet header
+    /// is invalid.
+    InvalidHardwareDisc {
+        /// The discriminator ID. Potentially invalid.
+        disc_id: u8,
+
+        /// Associated payload length.
         size: usize,
     },
 
-    /// Invalid payload size
-    InstumentationSize {
+    /// The expected payload size of an Instrumentation packet is invalid.
+    InvalidInstumentationSize {
+        /// The port from which the instrumentation packet is sourced.
         port: u8,
 
-        /// including the header byte
+        /// The invalid expected payload size.
         expected_size: usize,
     },
-}
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum PayloadError {
-    GTS2(usize),
+    /// An exception trace packet refers to an invalid action or an
+    /// invalid exception number.
+    InvalidExceptionTrace { exception: u16, function: u8 },
 
-    /// either exception number or action is invalid
-    ExceptionTrace(u16, u8),
+    /// The payload length of a PCSample packet is invalid.
+    InvalidPCSampleSize {
+        /// The payload constituting the PC value, of invalid size.
+        payload: Vec<u8>,
+    },
 
-    PCSample(Vec<u8>),
-    Exception(Vec<u8>),
-    DataTrace(u8, Vec<u8>),
+    /// The GlobalTimestamp2 packet does not contain a 48-bit or 64-bit timestamp.
+    InvalidGTS2Size {
+        /// The payload constituting the timestamp, of invalid size.
+        payload: Vec<u8>,
+    },
 
-    /// Invalid sync packet len
-    SyncLength(usize),
+    /// The number of zeroes in the Synchronization packet is less than
+    /// 47. The decoder is now in an unknown state; manual intervention
+    /// required.
+    InvalidSyncSize(usize),
 }
 
 /// Trace data decoder.
@@ -305,7 +323,7 @@ impl Decoder {
         self.incoming.extend(BitVec::<LocalBits, _>::from_vec(data));
     }
 
-    /// Pull the next item from the decoder.
+    /// Pull the next decoded ITM packet from the decoder, if any.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
         // Decode bytes until a packet is generated, or until we run out of bytes.
         while self.incoming.len() >= 8 {
@@ -321,12 +339,9 @@ impl Decoder {
                 Ok(Some(packet)) => return Ok(Some(packet)),
                 Ok(None) => continue,
                 Err(e) => {
-                    match e {
-                        DecoderError::Header(_) => assert!(self.state == DecoderState::Header),
-                        DecoderError::Payload(_) => {}
-                    }
+                    self.state = DecoderState::Header;
                     return Err(e);
-                }
+                },
             }
         }
 
@@ -342,7 +357,7 @@ impl Decoder {
                     self.state = DecoderState::Header;
                     return Ok(Some(TracePacket::Sync));
                 } else {
-                    return Err(DecoderError::Payload(PayloadError::SyncLength(count)));
+                    return Err(DecoderError::InvalidSyncSize(count));
                 }
             }
 
@@ -365,10 +380,7 @@ impl Decoder {
                 if payload.len() == *expected_size {
                     match Decoder::handle_hardware_source(*disc_id, payload.to_vec()) {
                         Ok(packet) => Ok(Some(packet)),
-                        Err(e) => {
-                            self.state = DecoderState::Header;
-                            Err(DecoderError::Payload(e))
-                        }
+                        Err(e) => Err(e),
                     }
                 } else {
                     Ok(None)
@@ -412,7 +424,11 @@ impl Decoder {
                             match payload.len() {
                                 4 => 47 - 26, // 48 bit timestamp
                                 6 => 63 - 26, // 64 bit timestamp
-                                n => return Err(DecoderError::Payload(PayloadError::GTS2(n))),
+                                _ => {
+                                    return Err(DecoderError::InvalidGTS2Size {
+                                        payload: payload.to_vec(),
+                                    })
+                                }
                             },
                         ) as usize,
                     }))
@@ -460,9 +476,12 @@ impl Decoder {
     }
 
     #[bitmatch]
-    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, PayloadError> {
+    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, DecoderError> {
         match disc_id {
             0 => {
+                if payload.len() != 1 {
+                    return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
+                }
                 // event counter wrapping
                 let b = payload[0];
 
@@ -477,7 +496,7 @@ impl Decoder {
             }
             1 => {
                 if payload.len() != 2 {
-                    return Err(PayloadError::Exception(payload));
+                    return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
                 }
 
                 let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
@@ -495,13 +514,23 @@ impl Decoder {
                         14 => ExceptionType::PendSV,
                         15 => ExceptionType::SysTick,
                         n if n >= 16 => ExceptionType::ExternalInterrupt(n as usize - 16),
-                        _ => return Err(PayloadError::ExceptionTrace(exception_number, function)),
+                        _ => {
+                            return Err(DecoderError::InvalidExceptionTrace {
+                                exception: exception_number,
+                                function,
+                            })
+                        }
                     },
                     action: match function {
                         0b01 => ExceptionAction::Entered,
                         0b10 => ExceptionAction::Exited,
                         0b11 => ExceptionAction::Returned,
-                        _ => return Err(PayloadError::ExceptionTrace(exception_number, function)),
+                        _ => {
+                            return Err(DecoderError::InvalidExceptionTrace {
+                                exception: exception_number,
+                                function,
+                            })
+                        }
                     },
                 });
             }
@@ -512,7 +541,7 @@ impl Decoder {
                     4 => Ok(TracePacket::PCSample {
                         pc: Some(u32::from_le_bytes(payload.try_into().unwrap())),
                     }),
-                    _ => Err(PayloadError::PCSample(payload)),
+                    _ => Err(DecoderError::InvalidPCSampleSize { payload }),
                 }
             }
             8..=23 => {
@@ -548,7 +577,7 @@ impl Decoder {
                             value: payload,
                         })
                     }
-                    _ => Err(PayloadError::DataTrace(disc_id, payload)),
+                    _ => Err(DecoderError::InvalidHardwarePacket { disc_id, payload }),
                 }
             }
             _ => unreachable!(), // we already verify the discriminator when we decode the header
@@ -611,10 +640,10 @@ impl Decoder {
                         0b10 => 3,
                         0b11 => 5,
                         _ => {
-                            return Err(DecoderError::Header(HeaderError::InstumentationSize {
+                            return Err(DecoderError::InvalidInstumentationSize {
                                 port: a,
                                 expected_size: s.into(),
-                            }))
+                            })
                         }
                     } - 1, // header byte already processed
                 };
@@ -624,10 +653,10 @@ impl Decoder {
                 let disc_id = a;
 
                 if !(0..=2).contains(&disc_id) && !(8..=23).contains(&disc_id) {
-                    return Err(DecoderError::Header(HeaderError::HardwareDisc {
+                    return Err(DecoderError::InvalidHardwareDisc {
                         disc_id,
                         size: s.into(),
-                    }));
+                    });
                 }
 
                 self.state = DecoderState::HardwareSource {
@@ -636,7 +665,7 @@ impl Decoder {
                     expected_size: s.into(),
                 };
             }
-            "hhhh_hhhh" => return Err(DecoderError::Header(HeaderError::Invalid(h))),
+            "hhhh_hhhh" => return Err(DecoderError::InvalidHeader(h)),
         }
 
         Ok(None)
