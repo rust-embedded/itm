@@ -338,10 +338,7 @@ impl Decoder {
             match self.process_byte(b) {
                 Ok(Some(packet)) => return Ok(Some(packet)),
                 Ok(None) => continue,
-                Err(e) => {
-                    self.state = DecoderState::Header;
-                    return Err(e);
-                },
+                e => return e,
             }
         }
 

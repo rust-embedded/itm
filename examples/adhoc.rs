@@ -1,4 +1,4 @@
-use itm_decode::Decoder;
+use itm_decode::{Decoder, DecoderState};
 
 fn main() {
     let bytes = include_bytes!("./itm.bin");
@@ -9,7 +9,11 @@ fn main() {
         match decoder.pull() {
             Ok(Some(packet)) => println!("{:?}", packet),
             Ok(None) => break,
-            Err(e) => println!("Error: {:?}", e),
+            Err(e) => {
+                println!("Error: {:?}", e);
+                // naive
+                decoder.state = DecoderState::Header;
+            }
         }
     }
 }
