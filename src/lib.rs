@@ -136,7 +136,7 @@ pub enum TracePacket {
     /// D4.3.4)
     DataTracePC {
         /// The comparator number that generated the data.
-        id: usize,
+        comparator: u8,
 
         /// The PC value for the instruction that caused the successful
         /// address comparison.
@@ -146,7 +146,7 @@ pub enum TracePacket {
     /// A DWT comparator matched an address. (Appendix D4.3.4)
     DataTraceAddress {
         /// The comparator number that generated the data.
-        id: usize,
+        comparator: u8,
 
         /// Address content.
         address: u16,
@@ -154,9 +154,9 @@ pub enum TracePacket {
 
     DataTraceValue {
         /// The comparator number that generated the data.
-        id: usize,
+        comparator: u8,
         access_type: MemoryAccessType,
-        value: u32,
+        value: Vec<u8>,
     },
 }
 
@@ -260,6 +260,7 @@ pub enum PayloadError {
 
     PCSample(Vec<u8>),
     Exception(Vec<u8>),
+    DataTrace(u8, Vec<u8>),
 }
 
 /// Trace data decoder.
@@ -480,6 +481,7 @@ impl Decoder {
         ts | ((head[0] as u32 & mask) << (7 * rtail.len()))
     }
 
+    #[bitmatch]
     fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, PayloadError> {
         match disc_id {
             0 => {
@@ -537,7 +539,39 @@ impl Decoder {
             }
             8..=23 => {
                 // data tracing
-                todo!();
+                #[bitmatch]
+                let "???t_tccd" = disc_id; // we have masked out bit[2:0]
+                let comparator = c;
+
+                match (t, d, payload.len()) {
+                    (0b01, 0, 4) => {
+                        // PC value packet
+                        Ok(TracePacket::DataTracePC {
+                            comparator,
+                            pc: u32::from_le_bytes(payload.try_into().unwrap()),
+                        })
+                    }
+                    (0b01, 1, 2) => {
+                        // address packet
+                        Ok(TracePacket::DataTraceAddress {
+                            comparator,
+                            address: u16::from_le_bytes(payload.try_into().unwrap()),
+                        })
+                    }
+                    (0b10, d, _) => {
+                        // data value packet, read access
+                        Ok(TracePacket::DataTraceValue {
+                            comparator,
+                            access_type: if d == 0 {
+                                MemoryAccessType::Write
+                            } else {
+                                MemoryAccessType::Read
+                            },
+                            value: payload,
+                        })
+                    }
+                    _ => Err(PayloadError::DataTrace(disc_id, payload)),
+                }
             }
             _ => unreachable!(), // we already verify the discriminator when we decode the header
         }
