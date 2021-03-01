@@ -14,3 +14,4 @@ description = "A sans-I/O library for decoding ITM and DWT packets"
 
 [dependencies]
 bitmatch = "0.1.1"
+bitvec = "0.21.0"

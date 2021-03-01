@@ -1,7 +1,7 @@
 //! Refer to appendix D4 in the ARMv7-M architecture reference manual.
 
 use bitmatch::bitmatch;
-use std::collections::VecDeque;
+use bitvec::prelude::*;
 use std::convert::TryInto;
 
 /// The set of possible packet types that may be decoded.
@@ -257,7 +257,7 @@ pub enum PayloadError {
 /// See also: https://sans-io.readthedocs.io/how-to-sans-io.html
 pub struct Decoder {
     /// public because manual intervention may be necessary
-    pub incoming: VecDeque<u8>,
+    pub incoming: BitVec,
 
     /// public because manual intervention may be necessary
     pub state: DecoderState,
@@ -292,21 +292,25 @@ pub enum DecoderState {
 impl Decoder {
     pub fn new() -> Self {
         Decoder {
-            incoming: VecDeque::new(),
+            incoming: BitVec::new(),
             state: DecoderState::Header,
         }
     }
 
     /// Feed trace data into the decoder.
     pub fn feed(&mut self, data: Vec<u8>) {
-        self.incoming.extend(&data)
+        self.incoming.extend(BitVec::<LocalBits, _>::from_vec(data));
     }
 
     /// Pull the next item from the decoder.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
         // Decode bytes until a packet is generated, or until we run out
         // of bytes.
-        while let Some(b) = self.incoming.pop_front() {
+        while self.incoming.len() >= 8 {
+            // XXX do we copy anything here?
+            let b = self.incoming[0..=7].load::<u8>();
+            self.incoming = self.incoming[8..].into();
+
             match self.process_byte(b) {
                 Ok(Some(packet)) => return Ok(Some(packet)),
                 Ok(None) => continue,
