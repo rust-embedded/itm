@@ -249,6 +249,9 @@ pub enum PayloadError {
     PCSample(Vec<u8>),
     Exception(Vec<u8>),
     DataTrace(u8, Vec<u8>),
+
+    /// Invalid sync packet len
+    SyncLength(usize),
 }
 
 /// Trace data decoder.
@@ -304,9 +307,12 @@ impl Decoder {
 
     /// Pull the next item from the decoder.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
-        // Decode bytes until a packet is generated, or until we run out
-        // of bytes.
+        // Decode bytes until a packet is generated, or until we run out of bytes.
         while self.incoming.len() >= 8 {
+            if let DecoderState::Syncing(_) = self.state {
+                break;
+            }
+
             // XXX do we copy anything here?
             let b = self.incoming[0..=7].load::<u8>();
             self.incoming = self.incoming[8..].into();
@@ -324,49 +330,32 @@ impl Decoder {
             }
         }
 
+        if let DecoderState::Syncing(mut count) = self.state {
+            while self.incoming.len() > 0 {
+                let bit = self.incoming[0];
+                self.incoming = self.incoming[1..].into();
+
+                if !bit && count < (47 as usize) {
+                    count += 1;
+                    continue;
+                } else if bit && count >= (47 as usize) {
+                    self.state = DecoderState::Header;
+                    return Ok(Some(TracePacket::Sync));
+                } else {
+                    return Err(DecoderError::Payload(PayloadError::SyncLength(count)));
+                }
+            }
+
+            return Ok(None);
+        }
+
         Ok(None)
     }
 
     fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
         let packet = match &mut self.state {
             DecoderState::Header => self.decode_header(b),
-            DecoderState::Syncing(count) => {
-                // This packet is at least comprised of 47 zeroes but
-                // mustn't be a multiple of 8 bits. If the first set
-                // bit, that denotes end-of-packet, is not in the 7th
-                // position, ...
-                // for i in 0..8 {
-                //     if b & (1 << i) {
-                //         // put back 7 - i bits at head of stream.
-                //     }
-                // }
-
-                // TODO check that packet contains at least 47 zeroes.
-                // TODO do we need to change to bitvec? Or can we keep
-                // use of a standard Vec<u8>? If we use the former:
-                // - added dep
-                // - some overhead to restructure already written code
-                // - changed public API?
-                // + very easy to handle a sync (we need just push the bits back)
-                //
-                // the latter:
-                //
-                // - difficult sync (up to seven bits in the bitstream's
-                // last byte would be "missing". We would have to keep
-                // tabs on the current alignment in feed(), and appropriately shift any new bytes into the last byte of those incoming (that is, after shifting all incoming first)).
-
-                // For now, just handle smallest possible sync packet
-                if b == 0 && *count < (47 as usize) {
-                    *count += 8;
-                    Ok(None)
-                } else if b == 0b1000_0000 {
-                    *count += 7;
-                    assert!(*count == (47 as usize));
-                    Ok(Some(TracePacket::Sync))
-                } else {
-                    todo!();
-                }
-            }
+            DecoderState::Syncing(_count) => unreachable!(),
             DecoderState::HardwareSource {
                 disc_id,
                 payload,
