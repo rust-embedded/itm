@@ -8,11 +8,8 @@
 //! Refer to appendix D4 in the ARMv7-M architecture reference manual.
 //! Also a good reference is itmdump.c from openocd:
 //! https://github.com/arduino/OpenOCD/blob/master/contrib/itmdump.c
-#![allow(dead_code)]
-#![allow(unused_imports)]
 
 use bitmatch::bitmatch;
-use scroll::Pread;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 

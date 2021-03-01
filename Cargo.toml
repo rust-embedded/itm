@@ -23,5 +23,4 @@ description = "A sans-I/O library for decoding ITM and DWT packets"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-scroll = "0.10.1"
 bitmatch = "0.1.1"
