@@ -1,4 +1,16 @@
-//! Refer to appendix D4 in the ARMv7-M architecture reference manual.
+//! A [sans-I/O](https://sans-io.readthedocs.io/how-to-sans-io.html)
+//! decoder for the ITM and DWT packet protocol as specifed in the
+//! [ARMv7-M architecture reference manual, Appendix
+//! D4](https://developer.arm.com/documentation/ddi0403/ed/). Any
+//! references in this code base refers to this document.
+//!
+//! Common abbreviations:
+//!
+//! - ITM: instrumentation trace macrocell;
+//! - PC: program counter;
+//! - DWT: data watchpoint and trace unit;
+//! - MSB: most significant bit;
+//! - BE: big-endian;
 
 use bitmatch::bitmatch;
 use bitvec::prelude::*;
@@ -6,14 +18,14 @@ use std::convert::TryInto;
 
 /// The set of possible packet types that may be decoded.
 ///
-/// (armv7m) would suggest an implementation of two enum types, but that
-/// possible structure is here flattened to simplify the implementation.
+/// Specification would suggest an implementation of two enum types, but
+/// that structure is here flattened to simplify the implementation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TracePacket {
     // Synchronization packet category (Appendix D4, p. 782)
     /// A synchronization packet is a unique pattern in the bitstream.
     /// It is identified and used to provide the alignment of other
-    /// packet bytes in the bitstream. (armv7m, Appendix D4.2.1)
+    /// packet bytes in the bitstream. (Appendix D4.2.1)
     Sync,
 
     // Protocol packet category (Appendix D4, p. 782)
@@ -21,18 +33,16 @@ pub enum TracePacket {
     ///
     /// - Software has written to an ITM stimulus port register when the
     /// stimulus port output buffer is full.
-    ///
     /// - The DWT attempts to generate a hardware source packet when the
     /// DWT output buffer is full.
-    ///
     /// - The local timestamp counter overflows.
     ///
-    /// See (armv7m, Appendix D4.2.3).
+    /// See (Appendix D4.2.3).
     Overflow,
 
     /// A delta timestamp that measures the interval since the
     /// generation of the last local timestamp and its relation to the
-    /// corresponding ITM/DWT data packets. (armv7m, Appendix D4.2.4)
+    /// corresponding ITM/DWT data packets. (Appendix D4.2.4)
     LocalTimestamp1 {
         /// Timestamp value.
         ts: u32,
@@ -42,19 +52,17 @@ pub enum TracePacket {
         data_relation: TimestampDataRelation,
     },
 
-    /// A smaller-interval delta timestamp that measures the interval
-    /// since the generation of the last local timestamp which is
-    /// synchronous with corresponding ITM/DWT data packets. (armv7m,
-    /// Appendix D4.2.4)
+    /// A derivative of `LocalTimestamp1` for timestamp values between
+    /// 1-6. Always synchronous to te associated ITM/DWT data. (Appendix D4.2.4)
     LocalTimestamp2 {
         /// Timestamp value.
-        ts: u8, // must not be 0b000 or 0b111
+        ts: u8,
     },
 
     /// An absolute timestamp based on the global timestamp clock that
-    /// contain the lower-order bits. (armv7m, Appendix D4.2.5)
+    /// contain the timestamp's lower-order bits. (Appendix D4.2.5)
     GlobalTimestamp1 {
-        /// Timestamp value.
+        /// Lower-order bits of the timestamp; bits\[25:0\].
         ts: usize,
 
         /// Set if higher order bits output by the last GTS2 have
@@ -67,18 +75,19 @@ pub enum TracePacket {
     },
 
     /// An absolute timestamp based on the global timestamp clock that
-    /// contain the higher-order bits. (armv7m, Appendix D4.2.5)
+    /// contain the timestamp's higher-order bits. (Appendix D4.2.5)
     GlobalTimestamp2 {
-        /// Timestamp value.
+        /// Higher-order bits of the timestamp value; bits\[63:26\] or
+        /// bits\[47:26\] depending on implementation.
         ts: usize,
     },
 
     /// A packet that provides additional information about the
     /// identified source (one of two possible, theoretically). On
     /// ARMv7-M this packet is only used to denote on which ITM stimulus
-    /// port a payload was written. (armv7m, Appendix D4.2.6)
+    /// port a payload was written. (Appendix D4.2.6)
     Extension {
-        /// Source port page number
+        /// Source port page number.
         page: u8,
     },
 
@@ -88,7 +97,7 @@ pub enum TracePacket {
         /// Stimulus port number.
         port: u8,
 
-        /// Instrumentation data written to the stimulus port.
+        /// Instrumentation data written to the stimulus port. MSB, BE.
         payload: Vec<u8>,
     },
 
@@ -115,14 +124,13 @@ pub enum TracePacket {
         action: ExceptionAction,
     },
 
-    /// Periodic program counter sample. (Appendix D4.3.3)
+    /// Periodic PC sample. (Appendix D4.3.3)
     PCSample {
-        /// `None` if periodic PC sleep packet.
+        /// The value of the PC. `None` if periodic PC sleep packet.
         pc: Option<u32>,
     },
 
-    /// A DWT comparator matched a program counter (PC) value. (Appendix
-    /// D4.3.4)
+    /// A DWT comparator matched a PC value. (Appendix D4.3.4)
     DataTracePC {
         /// The comparator number that generated the data.
         comparator: u8,
@@ -137,14 +145,19 @@ pub enum TracePacket {
         /// The comparator number that generated the data.
         comparator: u8,
 
-        /// Address content.
+        /// Data address content; bits\[15:0\]. MSB.
         address: u16,
     },
 
+    /// A data trace packet with a value. (Appendix D4.3.4)
     DataTraceValue {
         /// The comparator number that generated the data.
         comparator: u8,
+
+        /// Whether the data was read or written.
         access_type: MemoryAccessType,
+
+        /// The data value. MSB, BE.
         value: Vec<u8>,
     },
 }
@@ -179,7 +192,7 @@ pub enum ExceptionType {
     ExternalInterrupt(usize),
 }
 
-/// This enum denotes the type of memory access.
+/// Denotes the type of memory access.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MemoryAccessType {
     /// Memory was read.
@@ -239,7 +252,7 @@ pub enum DecoderError {
         /// The discriminator ID. Potentially invalid.
         disc_id: u8,
 
-        /// Associated payload. Potentially invalid length.
+        /// Associated payload. Potentially invalid length. MSB, BE.
         payload: Vec<u8>,
     },
 
@@ -264,37 +277,39 @@ pub enum DecoderError {
 
     /// An exception trace packet refers to an invalid action or an
     /// invalid exception number.
-    InvalidExceptionTrace { exception: u16, function: u8 },
+    InvalidExceptionTrace {
+        /// The exception number.
+        exception: u16,
+
+        /// Numerical representation of the function associated with the
+        /// exception number.
+        function: u8,
+    },
 
     /// The payload length of a PCSample packet is invalid.
     InvalidPCSampleSize {
-        /// The payload constituting the PC value, of invalid size.
+        /// The payload constituting the PC value, of invalid size. MSB, BE.
         payload: Vec<u8>,
     },
 
-    /// The GlobalTimestamp2 packet does not contain a 48-bit or 64-bit timestamp.
+    /// The GlobalTimestamp2 packet does not contain a 48-bit or 64-bit
+    /// timestamp.
     InvalidGTS2Size {
-        /// The payload constituting the timestamp, of invalid size.
+        /// The payload constituting the timestamp, of invalid size. MSB, BE.
         payload: Vec<u8>,
     },
 
     /// The number of zeroes in the Synchronization packet is less than
-    /// 47. The decoder is now in an unknown state; manual intervention
-    /// required.
+    /// 47.
     InvalidSyncSize(usize),
 }
 
-/// Intrumentation Trace Macrocell (ITM) data packet decoder.
-///
-/// This is a sans-io style decoder.
-/// See also: https://sans-io.readthedocs.io/how-to-sans-io.html
+/// ITM and DWT packet protocol decoder.
 pub struct Decoder {
-    /// The incoming bytes to the decoder. Public because manual
-    /// intervention is required upon eventual decode error.
+    /// The incoming bytes to the decoder.
     pub incoming: BitVec,
 
-    /// The current state of the decoder. Public because manual
-    /// intervention is required upon eventual decode error.
+    /// The current state of the decoder.
     pub state: DecoderState,
 }
 
@@ -328,18 +343,18 @@ pub enum DecoderState {
     },
 
     /// Next bytes will be assumed to be part of a LocalTimestamp{1,2}
-    /// packet, until the most significant bit is set.
+    /// packet, until the MSB is set.
     LocalTimestamp {
         data_relation: TimestampDataRelation,
         payload: Vec<u8>,
     },
 
     /// Next bytes will be assumed to be part of a GlobalTimestamp1
-    /// packet, until the most significant bit is set.
+    /// packet, until the MSB is set.
     GlobalTimestamp1 { payload: Vec<u8> },
 
     /// Next bytes will be assumed to be part of a GlobalTimestamp2
-    /// packet, until the most significant bit is set.
+    /// packet, until the MSB is set.
     GlobalTimestamp2 { payload: Vec<u8> },
 }
 
@@ -356,7 +371,7 @@ impl Decoder {
         self.incoming.extend(BitVec::<LocalBits, _>::from_vec(data));
     }
 
-    /// Pull the next decoded ITM packet from the decoder, if any.
+    /// Pull the next decoded ITM packet from the decoder, if any and able.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
         // Decode bytes until a packet is generated, or until we run out of bytes.
         while self.incoming.len() >= 8 {
@@ -375,15 +390,20 @@ impl Decoder {
             }
         }
 
+        // Read zeros from the bitstream until the first bit is set.
+        // This realigns the incoming bitstream for further processing,
+        // which may not be 8-bit aligned.
         if let DecoderState::Syncing(mut count) = self.state {
+            const MIN_ZEROS: usize = 47;
+
             while self.incoming.len() > 0 {
                 let bit = self.incoming[0];
                 self.incoming = self.incoming[1..].into();
 
-                if !bit && count < (47 as usize) {
+                if !bit && count < MIN_ZEROS {
                     count += 1;
                     continue;
-                } else if bit && count >= (47 as usize) {
+                } else if bit && count >= MIN_ZEROS {
                     self.state = DecoderState::Header;
                     return Ok(Some(TracePacket::Sync));
                 } else {
@@ -397,6 +417,7 @@ impl Decoder {
         Ok(None)
     }
 
+    /// Processes a single byte from the bitstream and changes decoder state if necessary.
     fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
         let packet = match &mut self.state {
             DecoderState::Header => self.decode_header(b),
@@ -505,16 +526,18 @@ impl Decoder {
         ts | ((head[0] as u32 & mask) << (7 * rtail.len()))
     }
 
+    /// Decodes the payload of a hardware source packet, if able.
     #[bitmatch]
     fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, DecoderError> {
         match disc_id {
             0 => {
+                // event counter wrap
+
                 if payload.len() != 1 {
                     return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
                 }
-                // event counter wrapping
-                let b = payload[0];
 
+                let b = payload[0];
                 Ok(TracePacket::EventCounterWrap {
                     cyc: b & (1 << 5) != 0,
                     fold: b & (1 << 4) != 0,
@@ -525,6 +548,8 @@ impl Decoder {
                 })
             }
             1 => {
+                // exception trace
+
                 if payload.len() != 2 {
                     return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
                 }
@@ -565,7 +590,7 @@ impl Decoder {
                 });
             }
             2 => {
-                // PC sampling
+                // PC sample
                 match payload.len() {
                     1 if payload[0] == 0 => Ok(TracePacket::PCSample { pc: None }),
                     4 => Ok(TracePacket::PCSample {
@@ -575,9 +600,9 @@ impl Decoder {
                 }
             }
             8..=23 => {
-                // data tracing
+                // data trace
                 #[bitmatch]
-                let "???t_tccd" = disc_id; // we have masked out bit[2:0]
+                let "???t_tccd" = disc_id; // we have already masked out bit[2:0]
                 let comparator = c;
 
                 match (t, d, payload.len()) {
@@ -596,7 +621,7 @@ impl Decoder {
                         })
                     }
                     (0b10, d, _) => {
-                        // data value packet, read access
+                        // data value packet
                         Ok(TracePacket::DataTraceValue {
                             comparator,
                             access_type: if d == 0 {
@@ -614,6 +639,7 @@ impl Decoder {
         }
     }
 
+    /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
     #[bitmatch]
     fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, DecoderError> {
         #[bitmatch]
@@ -628,7 +654,7 @@ impl Decoder {
                 return Ok(Some(TracePacket::Overflow));
             }
             "11rr_0000" => {
-                // LTS1
+                // Local timestamp, format 1 (LTS1)
                 let tc = r; // relationship with corresponding data
 
                 self.state = DecoderState::LocalTimestamp {
@@ -643,19 +669,19 @@ impl Decoder {
                 };
             }
             "0ttt_0000" => {
-                // LTS2
+                // Local timestamp, format 2 (LTS2)
                 return Ok(Some(TracePacket::LocalTimestamp2 { ts: t }));
             }
             "1001_0100" => {
-                // GTS1
+                // Global timestamp, format 1 (GTS1)
                 self.state = DecoderState::GlobalTimestamp1 { payload: vec![] };
             }
             "1011_0100" => {
-                // GTS2
+                // Global timestamp, format 2(GTS2)
                 self.state = DecoderState::GlobalTimestamp2 { payload: vec![] };
             }
             "0ppp_1000" => {
-                // Extension
+                // Extension packet
                 return Ok(Some(TracePacket::Extension { page: p }));
             }
 
@@ -675,7 +701,7 @@ impl Decoder {
                                 expected_size: s.into(),
                             })
                         }
-                    } - 1, // header byte already processed
+                    } - 1, // size would include header byte, but it has already been processed
                 };
             }
             "aaaa_a1ss" => {
