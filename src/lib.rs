@@ -396,10 +396,10 @@ impl Decoder {
         if let DecoderState::Syncing(mut count) = self.state {
             const MIN_ZEROS: usize = 47;
 
-            while self.incoming.len() > 0 {
-                let bit = self.incoming[0];
-                self.incoming = self.incoming[1..].into();
-
+            while let Some(bit) = {
+                self.incoming.rotate_left(1);
+                self.incoming.pop()
+            } {
                 if !bit && count < MIN_ZEROS {
                     count += 1;
                     continue;
