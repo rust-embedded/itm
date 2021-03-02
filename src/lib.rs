@@ -373,48 +373,45 @@ impl Decoder {
 
     /// Pull the next decoded ITM packet from the decoder, if any and able.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
-        // Decode bytes until a packet is generated, or until we run out of bytes.
-        while self.incoming.len() >= 8 {
-            if let DecoderState::Syncing(_) = self.state {
-                break;
-            }
+        loop {
+            match self.state {
+                // Read zeros from the bitstream until the first bit is set.
+                // This realigns the incoming bitstream for further processing,
+                // which may not be 8-bit aligned.
+                DecoderState::Syncing(mut count) => {
+                    const MIN_ZEROS: usize = 47;
 
-            // XXX do we copy anything here?
-            let b = self.incoming[0..=7].load::<u8>();
-            self.incoming = self.incoming[8..].into();
+                    while let Some(bit) = {
+                        self.incoming.rotate_left(1);
+                        self.incoming.pop()
+                    } {
+                        if !bit && count < MIN_ZEROS {
+                            count += 1;
+                            continue;
+                        } else if bit && count >= MIN_ZEROS {
+                            self.state = DecoderState::Header;
+                            return Ok(Some(TracePacket::Sync));
+                        } else {
+                            return Err(DecoderError::InvalidSyncSize(count));
+                        }
+                    }
 
-            match self.process_byte(b) {
-                Ok(Some(packet)) => return Ok(Some(packet)),
-                Ok(None) => continue,
-                e => return e,
+                    return Ok(None);
+                },
+                // Decode bytes until a packet is generated, or until we run out of bytes.
+                _ if self.incoming.len() >= 8 => match {
+                    // XXX do we copy anything here?
+                    let b = self.incoming[0..=7].load::<u8>();
+                    self.incoming = self.incoming[8..].into();
+                    self.process_byte(b)
+                } {
+                    Ok(Some(packet)) => return Ok(Some(packet)),
+                    Ok(None) => continue,
+                    e => return e,
+                },
+                _ => return Ok(None),
             }
         }
-
-        // Read zeros from the bitstream until the first bit is set.
-        // This realigns the incoming bitstream for further processing,
-        // which may not be 8-bit aligned.
-        if let DecoderState::Syncing(mut count) = self.state {
-            const MIN_ZEROS: usize = 47;
-
-            while let Some(bit) = {
-                self.incoming.rotate_left(1);
-                self.incoming.pop()
-            } {
-                if !bit && count < MIN_ZEROS {
-                    count += 1;
-                    continue;
-                } else if bit && count >= MIN_ZEROS {
-                    self.state = DecoderState::Header;
-                    return Ok(Some(TracePacket::Sync));
-                } else {
-                    return Err(DecoderError::InvalidSyncSize(count));
-                }
-            }
-
-            return Ok(None);
-        }
-
-        Ok(None)
     }
 
     /// Processes a single byte from the bitstream and changes decoder state if necessary.
