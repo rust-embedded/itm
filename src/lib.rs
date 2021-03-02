@@ -525,8 +525,9 @@ impl Decoder {
 
         // Mask out the timestamp's MSBs and shift them into the final
         // value.
-        let mask = !(1 << ((max_len % 7) + 2));
-        ts | ((head[0] as u32 & mask) << (7 * rtail.len()))
+        let shift = 7 - (max_len % 7);
+        let mask: u8 = 0xFFu8.wrapping_shl(shift) >> shift;
+        ts | (((head[0] & mask) as u32) << (7 * rtail.len()))
     }
 
     /// Decodes the payload of a hardware source packet, if able.
@@ -779,6 +780,45 @@ mod tests {
             },
             TracePacket::LocalTimestamp2 { ts: 0b101 },
         ].iter() {
+
+    #[test]
+    fn extract_timestamp() {
+        #[rustfmt::skip]
+        let ts: Vec<u8> = [
+            0b1000_0000,
+            0b1000_0000,
+            0b1000_0000,
+            0b0000_0000,
+        ].to_vec();
+
+        assert_eq!(Decoder::extract_timestamp(ts, 25), 0);
+
+        #[rustfmt::skip]
+        let ts: Vec<u8> = [
+            0b1000_0001,
+            0b1000_0111,
+            0b1001_1111,
+            0b0111_1111
+        ].to_vec();
+
+        assert_eq!(
+            Decoder::extract_timestamp(ts, 27),
+            0b1111111_0011111_0000111_0000001,
+        );
+
+        #[rustfmt::skip]
+        let ts: Vec<u8> = [
+            0b1000_0001,
+            0b1000_0111,
+            0b1001_1111,
+            0b1111_1111
+        ].to_vec();
+
+        assert_eq!(
+            Decoder::extract_timestamp(ts, 25),
+            0b11111_0011111_0000111_0000001,
+        );
+    }
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
         }
     }
