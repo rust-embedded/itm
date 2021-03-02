@@ -750,4 +750,11 @@ mod tests {
         decoder.feed(trace_data);
         assert_eq!(decoder.pull(), Ok(Some(TracePacket::Sync)));
     }
+
+    #[test]
+    fn decode_overflow_packet() {
+        let mut decoder = Decoder::new();
+        decoder.feed([0b0111_0000].to_vec());
+        assert_eq!(decoder.pull(), Ok(Some(TracePacket::Overflow)));
+    }
 }
