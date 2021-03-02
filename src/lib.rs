@@ -922,4 +922,23 @@ mod tests {
             }))
         );
     }
+
+    #[test]
+    fn decode_exceptiontrace_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b0000_1110,
+            0b0010_0000,
+            0b0011_0000
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::ExceptionTrace {
+                exception: ExceptionType::ExternalInterrupt(16),
+                action: ExceptionAction::Returned,
+            }))
+        );
+    }
 }
