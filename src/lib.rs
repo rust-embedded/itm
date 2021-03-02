@@ -900,4 +900,26 @@ mod tests {
             }))
         );
     }
+
+    #[test]
+    fn decode_eventcounterwrap_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b0000_0101,
+            0b0010_1010,
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::EventCounterWrap {
+                cyc: true,
+                fold: false,
+                lsu: true,
+                sleep: false,
+                exc: true,
+                cpi: false,
+            }))
+        );
+    }
 }
