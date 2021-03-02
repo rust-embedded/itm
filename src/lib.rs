@@ -873,4 +873,31 @@ mod tests {
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
         }
     }
+
+    #[test]
+    fn decode_instrumentation_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b1000_1011,
+            0b0000_0011,
+            0b0000_1111,
+            0b0011_1111,
+            0b1111_1111,
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::Instrumentation {
+                port: 0b1000_1,
+                #[rustfmt::skip]
+                payload: [
+                    0b0000_0011,
+                    0b0000_1111,
+                    0b0011_1111,
+                    0b1111_1111,
+                ].to_vec(),
+            }))
+        );
+    }
 }
