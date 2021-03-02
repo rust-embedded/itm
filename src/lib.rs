@@ -191,12 +191,13 @@ pub enum MemoryAccessType {
 
 /// Indicates the relationship between the generation of the local
 /// timestamp packet and the corresponding ITM or DWT data packet.
+/// (Appendix D4.2.4)
 #[derive(Debug, Clone, PartialEq)]
 pub enum TimestampDataRelation {
     /// The local timestamp value is synchronous to the corresponding
     /// ITM or DWT data. The value in the TS field is the timestamp
     /// counter value when the ITM or DWT packet is generated.
-    Synced,
+    Sync,
 
     /// The local timestamp value is delayed relative to the ITM or DWT
     /// data. The value in the TS field is the timestamp counter value
@@ -205,7 +206,7 @@ pub enum TimestampDataRelation {
     /// Note: the local timestamp value corresponding to the previous
     /// ITM or DWT packet is unknown, but must be between the previous
     /// and the current local timestamp values.
-    Delayed,
+    UnknownDelay,
 
     /// Output of the ITM or DWT packet corresponding to this Local
     /// timestamp packet is delayed relative to the associated event.
@@ -214,14 +215,14 @@ pub enum TimestampDataRelation {
     ///
     /// This encoding indicates that the ITM or DWT packet was delayed
     /// relative to other trace output packets.
-    DelayedRelative, // TODO improve name
+    AssocEventDelay,
 
     /// Output of the ITM or DWT packet corresponding to this Local
     /// timestamp packet is delayed relative to the associated event,
     /// and this Local timestamp packet is delayed relative to the ITM
-    /// or DWT data. This is a combined condition of `Delayed` and
-    /// `DelayedRelative`.
-    DelayedRelativeRelative, // TODO improve name
+    /// or DWT data. This is a combined condition of `UnknownDelay` and
+    /// `AssocEventDelay`.
+    UnknownAssocEventDelay,
 }
 
 /// A header or payload byte failed to be decoded. The state of the
@@ -632,10 +633,10 @@ impl Decoder {
 
                 self.state = DecoderState::LocalTimestamp {
                     data_relation: match tc {
-                        0b00 => TimestampDataRelation::Synced,
-                        0b01 => TimestampDataRelation::Delayed,
-                        0b10 => TimestampDataRelation::DelayedRelative,
-                        0b11 => TimestampDataRelation::DelayedRelativeRelative,
+                        0b00 => TimestampDataRelation::Sync,
+                        0b01 => TimestampDataRelation::UnknownDelay,
+                        0b10 => TimestampDataRelation::AssocEventDelay,
+                        0b11 => TimestampDataRelation::UnknownAssocEventDelay,
                         _ => unreachable!(),
                     },
                     payload: vec![],
