@@ -460,9 +460,9 @@ impl Decoder {
                 payload.push(b);
                 if last_byte {
                     Ok(Some(TracePacket::GlobalTimestamp1 {
-                        clkch: payload.last().unwrap() & (1 << 5) == 1,
-                        wrap: payload.last().unwrap() & (1 << 6) == 1,
                         ts: Decoder::extract_timestamp(payload.to_vec(), 25),
+                        clkch: (payload.last().unwrap() & (1 << 5)) >> 5 == 1,
+                        wrap: (payload.last().unwrap() & (1 << 6)) >> 6 == 1,
                     }))
                 } else {
                     Ok(None)
@@ -780,7 +780,12 @@ mod tests {
                 data_relation: TimestampDataRelation::Sync,
             },
             TracePacket::LocalTimestamp2 { ts: 0b101 },
-        ].iter() {
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
+        }
+    }
 
     #[test]
     fn extract_timestamp() {
@@ -820,6 +825,51 @@ mod tests {
             0b11111_0011111_0000111_0000001,
         );
     }
+
+    #[test]
+    fn decode_global_timestamp_packets() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0110_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // GTS2 (64-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b1000_0001,
+            0b1111_0100,
+            0b0000_0111,
+        ].to_vec());
+
+        for packet in [
+            TracePacket::GlobalTimestamp1 {
+                ts: 0b00000_0000100_0100000_0000000,
+                wrap: true,
+                clkch: true,
+            },
+            TracePacket::GlobalTimestamp2 {
+                ts: 0b1_0010001_1110100_0111101,
+            },
+            TracePacket::GlobalTimestamp2 {
+                ts: 0b111_1110100_0000001_0010001_1110100_0111101,
+            },
+        ]
+        .iter()
+        {
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
         }
     }
