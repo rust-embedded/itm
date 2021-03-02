@@ -45,7 +45,7 @@ pub enum TracePacket {
     /// corresponding ITM/DWT data packets. (Appendix D4.2.4)
     LocalTimestamp1 {
         /// Timestamp value.
-        ts: u32,
+        ts: u64,
 
         /// Indicates the relationship between the generation of `ts`
         /// and the corresponding ITM or DWT data packet.
@@ -63,7 +63,7 @@ pub enum TracePacket {
     /// contain the timestamp's lower-order bits. (Appendix D4.2.5)
     GlobalTimestamp1 {
         /// Lower-order bits of the timestamp; bits\[25:0\].
-        ts: usize,
+        ts: u64,
 
         /// Set if higher order bits output by the last GTS2 have
         /// changed.
@@ -79,7 +79,7 @@ pub enum TracePacket {
     GlobalTimestamp2 {
         /// Higher-order bits of the timestamp value; bits\[63:26\] or
         /// bits\[47:26\] depending on implementation.
-        ts: usize,
+        ts: u64,
     },
 
     /// A packet that provides additional information about the
@@ -460,9 +460,9 @@ impl Decoder {
                 payload.push(b);
                 if last_byte {
                     Ok(Some(TracePacket::GlobalTimestamp1 {
-                        ts: Decoder::extract_timestamp(payload.to_vec(), 25) as usize,
                         clkch: payload.last().unwrap() & (1 << 5) == 1,
                         wrap: payload.last().unwrap() & (1 << 6) == 1,
+                        ts: Decoder::extract_timestamp(payload.to_vec(), 25),
                     }))
                 } else {
                     Ok(None)
@@ -484,7 +484,7 @@ impl Decoder {
                                     })
                                 }
                             },
-                        ) as usize,
+                        ),
                     }))
                 } else {
                     Ok(None)
@@ -514,20 +514,21 @@ impl Decoder {
         packet
     }
 
-    fn extract_timestamp(payload: Vec<u8>, max_len: u32) -> u32 {
+    // TODO template this for u32, u64?
+    fn extract_timestamp(payload: Vec<u8>, max_len: u64) -> u64 {
         // Decode the first N - 1 payload bytes
         let (rtail, head) = payload.split_at(payload.len() - 1);
-        let mut ts: u32 = 0;
+        let mut ts: u64 = 0;
         for (i, b) in rtail.iter().enumerate() {
-            ts |= ((b & !(1 << 7)) as u32) // mask out continuation bit
+            ts |= ((b & !(1 << 7)) as u64) // mask out continuation bit
                 << (7 * i);
         }
 
         // Mask out the timestamp's MSBs and shift them into the final
         // value.
         let shift = 7 - (max_len % 7);
-        let mask: u8 = 0xFFu8.wrapping_shl(shift) >> shift;
-        ts | (((head[0] & mask) as u32) << (7 * rtail.len()))
+        let mask: u8 = 0xFFu8.wrapping_shl(shift.try_into().unwrap()) >> shift;
+        ts | (((head[0] & mask) as u64) << (7 * rtail.len()))
     }
 
     /// Decodes the payload of a hardware source packet, if able.
