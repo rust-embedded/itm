@@ -757,4 +757,29 @@ mod tests {
         decoder.feed([0b0111_0000].to_vec());
         assert_eq!(decoder.pull(), Ok(Some(TracePacket::Overflow)));
     }
+
+    #[test]
+    fn decode_local_timestamp_packets() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // LTS2
+            0b0101_0000,
+        ].to_vec());
+
+        for packet in [
+            TracePacket::LocalTimestamp1 {
+                ts: 0b11001001,
+                data_relation: TimestampDataRelation::Sync,
+            },
+            TracePacket::LocalTimestamp2 { ts: 0b101 },
+        ].iter() {
+            assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
+        }
+    }
 }
