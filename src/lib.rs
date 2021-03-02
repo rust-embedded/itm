@@ -736,3 +736,18 @@ impl Default for Decoder {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decode_sync_packet() {
+        let mut trace_data: Vec<u8> = [0; 47 / 8].to_vec();
+        trace_data.push(1 << 7);
+
+        let mut decoder = Decoder::new();
+        decoder.feed(trace_data);
+        assert_eq!(decoder.pull(), Ok(Some(TracePacket::Sync)));
+    }
+}
