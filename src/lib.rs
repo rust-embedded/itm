@@ -1005,4 +1005,62 @@ mod tests {
             }))
         );
     }
+
+    #[test]
+    fn decode_datatracevalue_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // four-byte (word) payload
+            0b1010_1111,
+            0b0000_0011,
+            0b0000_1111,
+            0b0011_1111,
+            0b1111_1111,
+
+            // two-byte (halfword) payload
+            0b1010_1110,
+            0b0000_0011,
+            0b0000_1111,
+
+            // one-byte (byte) payload
+            0b1010_1101,
+            0b0000_0011,
+        ].to_vec());
+
+        for packet in [
+            TracePacket::DataTraceValue {
+                comparator: 0b10,
+                access_type: MemoryAccessType::Read,
+                #[rustfmt::skip]
+                value: [
+                    0b0000_0011,
+                    0b0000_1111,
+                    0b0011_1111,
+                    0b1111_1111,
+                ].to_vec(),
+            },
+            TracePacket::DataTraceValue {
+                comparator: 0b10,
+                access_type: MemoryAccessType::Read,
+                #[rustfmt::skip]
+                value: [
+                    0b0000_0011,
+                    0b0000_1111,
+                ].to_vec(),
+            },
+            TracePacket::DataTraceValue {
+                comparator: 0b10,
+                access_type: MemoryAccessType::Read,
+                #[rustfmt::skip]
+                value: [
+                    0b0000_0011,
+                ].to_vec(),
+            },
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
+        }
+    }
 }
