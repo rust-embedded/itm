@@ -866,6 +866,20 @@ mod tests {
     }
 
     #[test]
+    fn decode_extention_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b0111_1000,
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::Extension { page: 0b111 }))
+        );
+    }
+
+    #[test]
     fn decode_instrumentation_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
