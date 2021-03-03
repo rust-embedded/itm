@@ -961,4 +961,25 @@ mod tests {
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
         }
     }
+
+    #[test]
+    fn decode_datatracepc_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b0111_0111,
+            0b0000_0011,
+            0b0000_1111,
+            0b0011_1111,
+            0b1111_1111,
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::DataTracePC {
+                comparator: 0b11,
+                pc: 0b11111111_00111111_00001111_00000011,
+            }))
+        );
+    }
 }
