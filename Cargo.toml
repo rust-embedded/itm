@@ -17,7 +17,10 @@ homepage = "https://github.com/tmplt/itm-decode"
 bitmatch = "0.1.1"
 bitvec = "0.21.0"
 funty = "=1.2.0"
+
+# only required by itm-decode executable
 anyhow = "1.0"
+structopt = "0.3"
 
 [lib]
 name = "itm_decode"
