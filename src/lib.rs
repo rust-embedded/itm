@@ -145,8 +145,8 @@ pub enum TracePacket {
         /// The comparator number that generated the data.
         comparator: u8,
 
-        /// Data address content; bits\[15:0\]. MSB.
-        address: u16,
+        /// Data address content; bits\[15:0\]. MSB, BE.
+        data: Vec<u8>,
     },
 
     /// A data trace packet with a value. (Appendix D4.3.4)
@@ -613,7 +613,7 @@ impl Decoder {
                         // address packet
                         Ok(TracePacket::DataTraceAddress {
                             comparator,
-                            address: u16::from_le_bytes(payload.try_into().unwrap()),
+                            data: payload,
                         })
                     }
                     (0b10, d, _) => {
@@ -979,6 +979,29 @@ mod tests {
             Ok(Some(TracePacket::DataTracePC {
                 comparator: 0b11,
                 pc: 0b11111111_00111111_00001111_00000011,
+            }))
+        );
+    }
+
+    #[test]
+    fn decode_datatraceaddress_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            0b0110_1110,
+            0b0000_0011,
+            0b0000_1111,
+        ].to_vec());
+
+        assert_eq!(
+            decoder.pull(),
+            Ok(Some(TracePacket::DataTraceAddress {
+                comparator: 0b10,
+                #[rustfmt::skip]
+                data: [
+                    0b0000_0011,
+                    0b0000_1111,
+                ].to_vec(),
             }))
         );
     }
