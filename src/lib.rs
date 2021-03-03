@@ -266,15 +266,6 @@ pub enum DecoderError {
         size: usize,
     },
 
-    /// The expected payload size of an Instrumentation packet is invalid.
-    InvalidInstumentationSize {
-        /// The port from which the instrumentation packet is sourced.
-        port: u8,
-
-        /// The invalid expected payload size.
-        expected_size: usize,
-    },
-
     /// An exception trace packet refers to an invalid action or an
     /// invalid exception number.
     InvalidExceptionTrace {
@@ -647,6 +638,16 @@ impl Decoder {
     /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
     #[bitmatch]
     fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, DecoderError> {
+        fn translate_ss(ss: u8) -> usize {
+            // See (Appendix D4.2.8, Table D4-4)
+            (match ss {
+                0b01 => 2,
+                0b10 => 3,
+                0b11 => 5,
+                _ => unreachable!(),
+            }) - 1 // ss would include the header byte, but it has already been processed
+        }
+
         #[bitmatch]
         match header {
             // Synchronization packet category
@@ -696,17 +697,7 @@ impl Decoder {
                 self.state = DecoderState::Instrumentation {
                     port: a,
                     payload: vec![],
-                    expected_size: match s {
-                        0b01 => 2,
-                        0b10 => 3,
-                        0b11 => 5,
-                        _ => {
-                            return Err(DecoderError::InvalidInstumentationSize {
-                                port: a,
-                                expected_size: s.into(),
-                            })
-                        }
-                    } - 1, // size would include header byte, but it has already been processed
+                    expected_size: translate_ss(s),
                 };
             }
             "aaaa_a1ss" => {
@@ -723,7 +714,7 @@ impl Decoder {
                 self.state = DecoderState::HardwareSource {
                     disc_id,
                     payload: vec![],
-                    expected_size: s.into(),
+                    expected_size: translate_ss(s),
                 };
             }
             "hhhh_hhhh" => return Err(DecoderError::InvalidHeader(h)),
@@ -940,5 +931,34 @@ mod tests {
                 action: ExceptionAction::Returned,
             }))
         );
+    }
+
+    #[test]
+    fn decode_pcsample_packet() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // PC sample (not sleeping)
+            0b0001_0111,
+            0b0000_0011,
+            0b0000_1111,
+            0b0011_1111,
+            0b1111_1111,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+        ].to_vec());
+
+        for packet in [
+            TracePacket::PCSample {
+                pc: Some(0b11111111_00111111_00001111_00000011),
+            },
+            TracePacket::PCSample { pc: None },
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
+        }
     }
 }
