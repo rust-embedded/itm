@@ -44,10 +44,6 @@ fn main() -> Result<()> {
         decoder
     };
 
-    if opt.naive {
-        eprintln!("This decoder is naive: any decode errors are presumed trivial (next byte in bitstream presumed to be a new header).\n");
-    }
-
     loop {
         match decoder.pull() {
             Ok(Some(TracePacket::Instrumentation {
