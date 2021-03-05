@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use itm_decode::{Decoder, DecoderState, TracePacket};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -44,13 +45,29 @@ fn main() -> Result<()> {
         decoder
     };
 
+    let mut stim = BTreeMap::new();
+
     loop {
         match decoder.pull() {
-            Ok(Some(TracePacket::Instrumentation {
-                port: _,
-                payload: _,
-            })) if opt.instr_as_string => {
-                todo!();
+            Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
+                // lossily convert payload to UTF-8 string
+                if !stim.contains_key(&port) {
+                    stim.insert(port, String::new());
+                }
+                let string = stim.get_mut(&port).unwrap();
+                string.push_str(&String::from_utf8_lossy(&payload));
+
+                // If a newline is encountered, the user likely wants
+                // the string to be printed.
+                if let Some(c) = string.chars().last() {
+                    if c == '\n' {
+                        for line in string.lines() {
+                            println!("port {}> {}", port, line);
+                        }
+
+                        string.clear();
+                    }
+                }
             }
             Ok(Some(packet)) => println!("{:?}", packet),
             Ok(None) => break,
@@ -64,6 +81,15 @@ fn main() -> Result<()> {
                 decoder.state = DecoderState::Header;
             }
             _ => unreachable!(),
+        }
+    }
+
+    if stim.iter().any(|(_, string)| !string.is_empty()) {
+        println!("Warning: decoded incomplete UTF-8 strings from instrumentation packets:");
+    }
+    for (port, string) in stim {
+        for line in string.lines() {
+            println!("port {}> {}", port, line);
         }
     }
 
