@@ -293,6 +293,16 @@ pub enum DecoderError {
     /// The number of zeroes in the Synchronization packet is less than
     /// 47.
     InvalidSyncSize(usize),
+
+    /// A source packet (from software or hardware) contains an invalid
+    /// expected payload size.
+    InvalidSourcePayload {
+        /// The header which contains the invalid payload size.
+        header: u8,
+
+        /// The invalid payload size. See (Appendix D4.2.8, Table D4-4).
+        size: u8,
+    },
 }
 
 /// ITM and DWT packet protocol decoder.
@@ -647,14 +657,16 @@ impl Decoder {
     /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
     #[bitmatch]
     fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, DecoderError> {
-        fn translate_ss(ss: u8) -> usize {
+        fn translate_ss(ss: u8) -> Option<usize> {
             // See (Appendix D4.2.8, Table D4-4)
-            (match ss {
-                0b01 => 2,
-                0b10 => 3,
-                0b11 => 5,
-                _ => unreachable!(),
-            }) - 1 // ss would include the header byte, but it has already been processed
+            Some(
+                match ss {
+                    0b01 => 2,
+                    0b10 => 3,
+                    0b11 => 5,
+                    _ => return None,
+                } - 1, // ss would include the header byte, but it has already been processed
+            )
         }
 
         #[bitmatch]
@@ -706,7 +718,11 @@ impl Decoder {
                 self.state = DecoderState::Instrumentation {
                     port: a,
                     payload: vec![],
-                    expected_size: translate_ss(s),
+                    expected_size: if let Some(s) = translate_ss(s) {
+                        s
+                    } else {
+                        return Err(DecoderError::InvalidSourcePayload { header, size: s });
+                    },
                 };
             }
             "aaaa_a1ss" => {
@@ -723,7 +739,11 @@ impl Decoder {
                 self.state = DecoderState::HardwareSource {
                     disc_id,
                     payload: vec![],
-                    expected_size: translate_ss(s),
+                    expected_size: if let Some(s) = translate_ss(s) {
+                        s
+                    } else {
+                        return Err(DecoderError::InvalidSourcePayload { header, size: s });
+                    },
                 };
             }
             "hhhh_hhhh" => return Err(DecoderError::InvalidHeader(h)),
