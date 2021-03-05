@@ -1,6 +1,6 @@
 [package]
 name = "itm-decode"
-version = "0.1.3"
+version = "0.1.4"
 authors = [
         "Viktor Sonesten <v@tmplt.dev>",
 ]
@@ -15,7 +15,8 @@ homepage = "https://github.com/tmplt/itm-decode"
 
 [dependencies]
 bitmatch = "0.1.1"
-bitvec = "0.21.1"
+bitvec = "0.19.4"
+funty = "=1.1.0"
 anyhow = "1.0"
 
 [lib]

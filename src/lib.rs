@@ -369,9 +369,18 @@ impl Decoder {
                 DecoderState::Syncing(_) => return self.handle_sync(),
                 // Decode bytes until a packet is generated, or until we run out of bytes.
                 _ if self.incoming.len() >= 8 => match {
-                    // XXX do we copy anything here?
-                    let b = self.incoming[0..=7].load::<u8>();
+                    // Pop a byte from the bitstream.
+                    let bv = &self.incoming[0..=7];
+                    let mut b: u8 = 0;
+                    // XXX adhoc reimplementation of BitField::load_le
+                    // that is broken for some edge cases in version
+                    // 0.19.4.
+                    for (i, bit) in bv.iter().enumerate() {
+                        b |= (*bit as u8) << i;
+                    }
+                    // XXX is this a copy?
                     self.incoming = self.incoming[8..].into();
+
                     self.process_byte(b)
                 } {
                     Ok(Some(packet)) => return Ok(Some(packet)),
