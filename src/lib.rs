@@ -369,7 +369,13 @@ impl Decoder {
 
     /// Feed trace data into the decoder.
     pub fn feed(&mut self, data: Vec<u8>) {
-        self.incoming.extend(BitVec::<LocalBits, _>::from_vec(data));
+        // To optimize the performance in pull, we must reverse the
+        // input bitstream and prepend it. This is a costly operation,
+        // but is better done here than elsewhere.
+        let mut bv = BitVec::<LocalBits, _>::from_vec(data);
+        bv.reverse();
+        bv.append(&mut self.incoming);
+        self.incoming.append(&mut bv);
     }
 
     /// Pull the next decoded ITM packet from the decoder, if any and able.
@@ -379,17 +385,10 @@ impl Decoder {
                 DecoderState::Syncing(_) => return self.handle_sync(),
                 // Decode bytes until a packet is generated, or until we run out of bytes.
                 _ if self.incoming.len() >= 8 => match {
-                    // Pop a byte from the bitstream.
-                    let bv = &self.incoming[0..=7];
                     let mut b: u8 = 0;
-                    // XXX adhoc reimplementation of BitField::load_le
-                    // that is broken for some edge cases in version
-                    // 0.19.4.
-                    for (i, bit) in bv.iter().enumerate() {
-                        b |= (*bit as u8) << i;
+                    for i in 0..8 {
+                        b |= (self.incoming.pop().unwrap() as u8) << i;
                     }
-                    // XXX is this a copy?
-                    self.incoming = self.incoming[8..].into();
 
                     self.process_byte(b)
                 } {
@@ -409,10 +408,7 @@ impl Decoder {
         const MIN_ZEROS: usize = 47;
 
         if let DecoderState::Syncing(mut count) = self.state {
-            while let Some(bit) = {
-                self.incoming.rotate_left(1);
-                self.incoming.pop()
-            } {
+            while let Some(bit) = self.incoming.pop() {
                 if !bit && count < MIN_ZEROS {
                     count += 1;
                     continue;
