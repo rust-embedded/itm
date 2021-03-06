@@ -22,6 +22,16 @@ funty = "=1.1.0"
 anyhow = "1.0"
 structopt = "0.3"
 
+[dependencies.serde_crate]
+package = "serde"
+version = "1"
+features = [ "derive" ]
+optional = true
+
+[features]
+serde = [ "serde_crate" ]
+default = []
+
 [lib]
 name = "itm_decode"
 

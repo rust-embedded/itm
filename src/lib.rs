@@ -16,11 +16,19 @@ use bitmatch::bitmatch;
 use bitvec::prelude::*;
 use std::convert::TryInto;
 
+#[cfg(feature = "serde")]
+use serde_crate::{Deserialize, Serialize};
+
 /// The set of possible packet types that may be decoded.
 ///
 /// Specification would suggest an implementation of two enum types, but
 /// that structure is here flattened to simplify the implementation.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum TracePacket {
     // Synchronization packet category (Appendix D4, p. 782)
     /// A synchronization packet is a unique pattern in the bitstream.
@@ -164,6 +172,11 @@ pub enum TracePacket {
 
 /// Denotes the exception action taken by the processor. (Table D4-6)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum ExceptionAction {
     /// Exception was entered.
     Entered,
@@ -178,6 +191,11 @@ pub enum ExceptionAction {
 /// Denotes the exception type (interrupt event) of the processor.
 /// (Table B1-4)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum ExceptionType {
     Reset,
     Nmi,
@@ -194,6 +212,11 @@ pub enum ExceptionType {
 
 /// Denotes the type of memory access.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum MemoryAccessType {
     /// Memory was read.
     Read,
@@ -206,6 +229,11 @@ pub enum MemoryAccessType {
 /// timestamp packet and the corresponding ITM or DWT data packet.
 /// (Appendix D4.2.4)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum TimestampDataRelation {
     /// The local timestamp value is synchronous to the corresponding
     /// ITM or DWT data. The value in the TS field is the timestamp
@@ -242,6 +270,11 @@ pub enum TimestampDataRelation {
 /// decoder is now in an unknown state and manual intervention is
 /// required.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum DecoderError {
     /// Header is invalid and cannot be decoded.
     InvalidHeader(u8),
@@ -319,6 +352,11 @@ pub struct Decoder {
 /// the current state is `Syncing` or `HardwareSource`, the next state
 /// is `Header` again.)
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
 pub enum DecoderState {
     /// Next byte will be decoded as a header byte.
     Header,
