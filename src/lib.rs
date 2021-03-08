@@ -338,15 +338,6 @@ pub enum DecoderError {
     },
 }
 
-/// ITM and DWT packet protocol decoder.
-pub struct Decoder {
-    /// The incoming bytes to the decoder.
-    pub incoming: BitVec,
-
-    /// The current state of the decoder.
-    pub state: DecoderState,
-}
-
 /// The decoder's possible states. The default decoder state is `Header`
 /// and will always return there after a maximum of two steps. (E.g. if
 /// the current state is `Syncing` or `HardwareSource`, the next state
@@ -397,11 +388,84 @@ pub enum DecoderState {
     GlobalTimestamp2 { payload: Vec<u8> },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+/// Combined timestamp generated from local and global timestamp
+/// packets. Field values relate to the target's global timestamp clock.
+/// See (Appendix C1, page 713).
+pub struct Timestamp {
+    /// A base timestamp upon which to apply the delta. `Some(base)` if
+    /// both a GTS1 and GTS2 packets where received.
+    pub base: Option<usize>,
+
+    /// A monotonically increasing local timestamp counter which apply
+    /// on the base timestamp. The value is the sum of all local
+    /// timestamps since the last global timestamp.
+    pub delta: usize,
+
+    /// In what manner this timestamp relate to the associated data packets.
+    pub data_relation: TimestampDataRelation,
+
+    /// An overflow packet was recieved, which may have been caused by a
+    /// local timestamp counter overflow. See (Appendix D4.2.3). The
+    /// timestamp in this structure is now potentially diverged from the
+    /// true timestamp by the maximum value of the local timestamp
+    /// counter (implementation defined), and will be considered such
+    /// until the next global timestamp.
+    pub diverged: bool,
+}
+
+/// A context in which to record the current timestamp between calls to [Decoder::pull_with_timestamp].
+pub struct TimestampedContext {
+    /// Data packets associated with [TimestampedContext::ts] in this structure.
+    pub packets: Vec<TracePacket>,
+
+    /// The potentially received [TracePacket::GlobalTimestamp1] packet.
+    /// Used in combination with [TimestampedContext::gts2] to update
+    /// [Timestamp::base].
+    pub gts1: Option<usize>,
+
+    /// The potentially received [TracePacket::GlobalTimestamp2] packet.
+    /// Used in combination with [TimestampedContext::gts1] to update
+    /// [Timestamp::base].
+    pub gts2: Option<usize>,
+
+    /// The current timestamp.
+    pub ts: Timestamp,
+}
+
+/// ITM and DWT packet protocol decoder.
+pub struct Decoder {
+    /// The incoming bytes to the decoder.
+    pub incoming: BitVec,
+
+    /// The current state of the decoder.
+    pub state: DecoderState,
+
+    /// Timestamp context. Used exclusively in [Decoder::pull_with_timestamp].
+    pub ts_ctx: TimestampedContext,
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Decoder {
             incoming: BitVec::new(),
             state: DecoderState::Header,
+            ts_ctx: TimestampedContext {
+                packets: vec![],
+                gts1: None,
+                gts2: None,
+                ts: Timestamp {
+                    base: None,
+                    delta: 0,
+                    data_relation: TimestampDataRelation::Sync, // not important
+                    diverged: false,
+                },
+            },
         }
     }
 
@@ -435,6 +499,95 @@ impl Decoder {
                     e => return e,
                 },
                 _ => return Ok(None),
+            }
+        }
+    }
+
+    /// Pull the next set of ITM data packets (not timestamps) from the
+    /// decoder and associate a [Timestamp]. **Assumes that local
+    /// timestamps will be found in the bitstream.**
+    ///
+    /// According to (Appendix C1.7.1, page 710-711), a local timestamp
+    /// relating to a single, or to a stream of back-to-back packets, is
+    /// generated and sent after the data packets in question in the
+    /// bitstream.
+    ///
+    /// This function thus [Decoder::pull]s packets until a local
+    /// timestamp is read, and opportunely calculates an associated
+    /// [Timestamp]: local timestamps monotonically increase an internal
+    /// delta counter; upon a global timestamps the base is updated, and
+    /// the delta is reset.
+    pub fn pull_with_timestamp(
+        &mut self,
+    ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+        loop {
+            match self.pull() {
+                // No packets remaining or an error, just propagate.
+                Ok(None) => return Ok(None),
+                Err(e) => return Err(e),
+
+                // A local timestamp: packets received after the last
+                // local timestamp (all self.ts_ctx.packets) relate to
+                // this local timestamp. Return the packets and
+                // timestamp.
+                Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation })) => {
+                    self.ts_ctx.ts.delta += ts as usize;
+                    self.ts_ctx.ts.data_relation = data_relation;
+                    return Ok(Some((
+                        self.ts_ctx.packets.drain(..).collect(),
+                        self.ts_ctx.ts.clone(),
+                    )));
+                }
+                Ok(Some(TracePacket::LocalTimestamp2 { ts })) => {
+                    self.ts_ctx.ts.delta += ts as usize;
+                    self.ts_ctx.ts.data_relation = TimestampDataRelation::Sync;
+                    return Ok(Some((
+                        self.ts_ctx.packets.drain(..).collect(),
+                        self.ts_ctx.ts.clone(),
+                    )));
+                }
+
+                // A global timestamp: store until we have both the
+                // upper (GTS2) and lower bits (GTS1).
+                Ok(Some(TracePacket::GlobalTimestamp1 { ts, wrap, clkch })) => {
+                    self.ts_ctx.gts1 = Some(ts as usize);
+                    if wrap {
+                        // upper bits have changed; GTS2 incoming
+                        self.ts_ctx.gts2 = None;
+                    }
+                    if clkch {
+                        // changed input clock to ITM; full GTS incoming
+                        self.ts_ctx.gts1 = None;
+                        self.ts_ctx.gts2 = None;
+                    }
+                }
+                Ok(Some(TracePacket::GlobalTimestamp2 { ts })) => {
+                    self.ts_ctx.gts2 = Some(ts as usize)
+                }
+
+                // An overflow: the local timestamp may potentially have
+                // wrapped around, but this is not necessarily the case.
+                // We can in any case no longer generate an accurate
+                // Timestamp.
+                Ok(Some(TracePacket::Overflow)) => {
+                    self.ts_ctx.ts.diverged = true;
+                    self.ts_ctx.packets.push(TracePacket::Overflow);
+                }
+
+                // A packet that doesn't relate to the timestamp: stash
+                // it until the next local timestamp.
+                Ok(Some(packet)) => self.ts_ctx.packets.push(packet),
+            }
+
+            // Do we have enough info two calculate a new base for the timestamp?
+            if let (Some(lower), Some(upper)) = (self.ts_ctx.gts1, self.ts_ctx.gts2) {
+                const GTS2_TS_SHIFT: usize = 25; // see (Appendix D4.2.5).
+                self.ts_ctx.ts = Timestamp {
+                    base: Some((upper << GTS2_TS_SHIFT) | lower),
+                    delta: 0,
+                    data_relation: TimestampDataRelation::Sync, // again, not important
+                    diverged: false,
+                };
             }
         }
     }
