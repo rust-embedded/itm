@@ -404,11 +404,15 @@ pub struct Timestamp {
 
     /// A monotonically increasing local timestamp counter which apply
     /// on the base timestamp. The value is the sum of all local
-    /// timestamps since the last global timestamp.
-    pub delta: usize,
+    /// timestamps since the last global timestamp. `Some(delta)` if at
+    /// least one LTS1/LTS2 where received; or, if global timestamps are
+    /// enabled, if at least one LTS1/LTS2 where received since the last
+    /// global timestamp.
+    pub delta: Option<usize>,
 
-    /// In what manner this timestamp relate to the associated data packets.
-    pub data_relation: TimestampDataRelation,
+    /// In what manner this timestamp relate to the associated data
+    /// packets, if known.
+    pub data_relation: Option<TimestampDataRelation>,
 
     /// An overflow packet was recieved, which may have been caused by a
     /// local timestamp counter overflow. See (Appendix D4.2.3). The
@@ -417,6 +421,17 @@ pub struct Timestamp {
     /// counter (implementation defined), and will be considered such
     /// until the next global timestamp.
     pub diverged: bool,
+}
+
+impl Default for Timestamp {
+    fn default() -> Self {
+        Timestamp {
+            base: None,
+            delta: None,
+            data_relation: None,
+            diverged: false,
+        }
+    }
 }
 
 /// A context in which to record the current timestamp between calls to [Decoder::pull_with_timestamp].
@@ -436,6 +451,22 @@ pub struct TimestampedContext {
 
     /// The current timestamp.
     pub ts: Timestamp,
+
+    /// Whether to only process global timestamps in the bitstream.
+    /// Defaults to false.
+    pub only_gts: bool,
+}
+
+impl Default for TimestampedContext {
+    fn default() -> Self {
+        TimestampedContext {
+            packets: vec![],
+            gts1: None,
+            gts2: None,
+            ts: Timestamp::default(),
+            only_gts: false,
+        }
+    }
 }
 
 /// ITM and DWT packet protocol decoder.
@@ -455,17 +486,7 @@ impl Decoder {
         Decoder {
             incoming: BitVec::new(),
             state: DecoderState::Header,
-            ts_ctx: TimestampedContext {
-                packets: vec![],
-                gts1: None,
-                gts2: None,
-                ts: Timestamp {
-                    base: None,
-                    delta: 0,
-                    data_relation: TimestampDataRelation::Sync, // not important
-                    diverged: false,
-                },
-            },
+            ts_ctx: TimestampedContext::default(),
         }
     }
 
@@ -503,6 +524,13 @@ impl Decoder {
         }
     }
 
+    /// Configure whether only global timestamps should be processed in
+    /// the bitstream. See [TimestampedContext::only_gts]. Only affects
+    /// the operation of [Decoder::pull_with_timestamp].
+    pub fn only_global_timestamps(&mut self, only_gts: bool) {
+        self.ts_ctx.only_gts = only_gts;
+    }
+
     /// Pull the next set of ITM data packets (not timestamps) from the
     /// decoder and associate a [Timestamp]. **Assumes that local
     /// timestamps will be found in the bitstream.**
@@ -530,17 +558,27 @@ impl Decoder {
                 // local timestamp (all self.ts_ctx.packets) relate to
                 // this local timestamp. Return the packets and
                 // timestamp.
-                Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation })) => {
-                    self.ts_ctx.ts.delta += ts as usize;
-                    self.ts_ctx.ts.data_relation = data_relation;
+                Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation }))
+                    if !self.ts_ctx.only_gts =>
+                {
+                    if let Some(ref mut delta) = self.ts_ctx.ts.delta {
+                        *delta += ts as usize;
+                    } else {
+                        self.ts_ctx.ts.delta = Some(ts as usize);
+                    }
+                    self.ts_ctx.ts.data_relation = Some(data_relation);
                     return Ok(Some((
                         self.ts_ctx.packets.drain(..).collect(),
                         self.ts_ctx.ts.clone(),
                     )));
                 }
-                Ok(Some(TracePacket::LocalTimestamp2 { ts })) => {
-                    self.ts_ctx.ts.delta += ts as usize;
-                    self.ts_ctx.ts.data_relation = TimestampDataRelation::Sync;
+                Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.ts_ctx.only_gts => {
+                    if let Some(ref mut delta) = self.ts_ctx.ts.delta {
+                        *delta += ts as usize;
+                    } else {
+                        self.ts_ctx.ts.delta = Some(ts as usize);
+                    }
+                    self.ts_ctx.ts.data_relation = Some(TimestampDataRelation::Sync);
                     return Ok(Some((
                         self.ts_ctx.packets.drain(..).collect(),
                         self.ts_ctx.ts.clone(),
@@ -576,18 +614,20 @@ impl Decoder {
 
                 // A packet that doesn't relate to the timestamp: stash
                 // it until the next local timestamp.
-                Ok(Some(packet)) => self.ts_ctx.packets.push(packet),
+                Ok(Some(packet)) if !self.ts_ctx.only_gts => self.ts_ctx.packets.push(packet),
+
+                // As above, but with local timestamps considered data: return the packet directly.
+                Ok(Some(packet)) if self.ts_ctx.only_gts => {
+                    return Ok(Some((vec![packet], self.ts_ctx.ts.clone())))
+                }
+                _ => unreachable!(),
             }
 
             // Do we have enough info two calculate a new base for the timestamp?
             if let (Some(lower), Some(upper)) = (self.ts_ctx.gts1, self.ts_ctx.gts2) {
                 const GTS2_TS_SHIFT: usize = 25; // see (Appendix D4.2.5).
-                self.ts_ctx.ts = Timestamp {
-                    base: Some((upper << GTS2_TS_SHIFT) | lower),
-                    delta: 0,
-                    data_relation: TimestampDataRelation::Sync, // again, not important
-                    diverged: false,
-                };
+                self.ts_ctx.ts = Timestamp::default();
+                self.ts_ctx.ts.base = Some((upper << GTS2_TS_SHIFT) | lower);
             }
         }
     }
@@ -937,12 +977,6 @@ impl Decoder {
         }
 
         Ok(None)
-    }
-}
-
-impl Default for Decoder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
