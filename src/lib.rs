@@ -625,9 +625,12 @@ impl Decoder {
 
             // Do we have enough info two calculate a new base for the timestamp?
             if let (Some(lower), Some(upper)) = (self.ts_ctx.gts1, self.ts_ctx.gts2) {
-                const GTS2_TS_SHIFT: usize = 25; // see (Appendix D4.2.5).
+                // XXX Should we move this calc into some Timestamp::from()?
+                const GTS2_TS_SHIFT: usize = 26; // see (Appendix D4.2.5).
                 self.ts_ctx.ts = Timestamp::default();
                 self.ts_ctx.ts.base = Some((upper << GTS2_TS_SHIFT) | lower);
+                self.ts_ctx.gts1 = None;
+                self.ts_ctx.gts2 = None;
             }
         }
     }
