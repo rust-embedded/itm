@@ -1338,4 +1338,137 @@ mod tests {
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
         }
     }
+
+    #[test]
+    fn pull_with_timestamp() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Overflow
+            0b0111_0000,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // LTS1
+            0b1111_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Pull!
+        ].to_vec());
+
+        for set in [
+            Ok(Some((
+                [
+                    TracePacket::PCSample { pc: None },
+                    TracePacket::PCSample { pc: None },
+                    TracePacket::PCSample { pc: None },
+                ]
+                .into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001 * 2),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::Overflow].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001 * 3),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: true,
+                },
+            ))),
+            Ok(Some((
+                [].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001),
+                    data_relation: Some(TimestampDataRelation::UnknownAssocEventDelay),
+                    diverged: false,
+                },
+            ))),
+            Ok(None),
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull_with_timestamp(), *set);
+        }
+    }
 }
