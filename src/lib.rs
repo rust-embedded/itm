@@ -1471,4 +1471,86 @@ mod tests {
             assert_eq!(decoder.pull_with_timestamp(), *set);
         }
     }
+
+    #[test]
+    fn pull_with_timestamp_gts_only() {
+        let mut decoder = Decoder::new();
+        decoder.only_global_timestamps(true);
+        #[rustfmt::skip]
+        decoder.feed([
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // Pull!
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // Pull!
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Pull!
+        ].to_vec());
+
+        for set in [
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: None,
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::LocalTimestamp1 {
+                    ts: 201,
+                    data_relation: TimestampDataRelation::Sync,
+                }]
+                .into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(None),
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull_with_timestamp(), *set);
+        }
+    }
 }
