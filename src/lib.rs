@@ -548,6 +548,22 @@ impl Decoder {
     pub fn pull_with_timestamp(
         &mut self,
     ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+        // Common functionality for LTS{1,2}
+        fn assoc_packets_with_lts(
+            packets: Vec<TracePacket>,
+            ts: &mut Timestamp,
+            lts: usize,
+            data_relation: TimestampDataRelation,
+        ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+            if let Some(ref mut delta) = ts.delta {
+                *delta += lts as usize;
+            } else {
+                ts.delta = Some(lts);
+            }
+            ts.data_relation = Some(data_relation);
+            Ok(Some((packets, ts.clone())))
+        }
+
         loop {
             match self.pull() {
                 // No packets remaining or an error, just propagate.
@@ -561,28 +577,20 @@ impl Decoder {
                 Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation }))
                     if !self.ts_ctx.only_gts =>
                 {
-                    if let Some(ref mut delta) = self.ts_ctx.ts.delta {
-                        *delta += ts as usize;
-                    } else {
-                        self.ts_ctx.ts.delta = Some(ts as usize);
-                    }
-                    self.ts_ctx.ts.data_relation = Some(data_relation);
-                    return Ok(Some((
+                    return assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
-                        self.ts_ctx.ts.clone(),
-                    )));
+                        &mut self.ts_ctx.ts,
+                        ts as usize,
+                        data_relation,
+                    );
                 }
                 Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.ts_ctx.only_gts => {
-                    if let Some(ref mut delta) = self.ts_ctx.ts.delta {
-                        *delta += ts as usize;
-                    } else {
-                        self.ts_ctx.ts.delta = Some(ts as usize);
-                    }
-                    self.ts_ctx.ts.data_relation = Some(TimestampDataRelation::Sync);
-                    return Ok(Some((
+                    return assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
-                        self.ts_ctx.ts.clone(),
-                    )));
+                        &mut self.ts_ctx.ts,
+                        ts as usize,
+                        TimestampDataRelation::Sync,
+                    );
                 }
 
                 // A global timestamp: store until we have both the
