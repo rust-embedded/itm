@@ -19,8 +19,8 @@ bitvec = "0.19.4"
 funty = "=1.1.0"
 
 # only required by itm-decode executable
-anyhow = "1.0"
-structopt = "0.3"
+anyhow = { version = "1.0", optional = true }
+structopt = { version = "0.3", optional = true }
 
 [dependencies.serde_crate]
 package = "serde"
@@ -29,8 +29,9 @@ features = [ "derive" ]
 optional = true
 
 [features]
+bin = [ "anyhow", "structopt" ]
 serde = [ "serde_crate" ]
-default = []
+default = [ "bin" ]
 
 [lib]
 name = "itm_decode"
