@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use itm_decode::{Decoder, DecoderState, TracePacket};
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, BufRead, BufReader, Read};
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -25,30 +25,41 @@ struct Opt {
     )]
     instr_as_string: bool,
 
-    #[structopt(name = "FILE", parse(from_os_str))]
-    file: PathBuf,
+    #[structopt(
+        name = "FILE",
+        parse(from_os_str),
+        help = "Raw trace input file. If omitted, expects raw trace on stdin instead."
+    )]
+    file: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
     let opt = Opt::from_args();
 
-    // Read the whole file and feed to decoder
-    let mut decoder = {
-        let mut f = File::open(opt.file.clone())
-            .with_context(|| format!("Failed to open {:?}", opt.file))?;
-        let mut buf: Vec<u8> = Vec::new();
-        f.read_to_end(&mut buf)
-            .with_context(|| format!("Failed to buffer {:?}", opt.file))?;
-        let mut decoder = Decoder::new();
-        decoder.feed(buf);
-
-        decoder
+    // Open the given file, or stdin
+    let mut file: Box<dyn BufRead> = match opt.file {
+        Some(ref file) => Box::new(BufReader::new(
+            File::open(file.clone()).with_context(|| format!("Failed to open {:?}", file))?,
+        )),
+        None => Box::new(BufReader::new(io::stdin())),
     };
 
+    let mut decoder = Decoder::new();
     let mut stim = BTreeMap::new();
 
     loop {
         match decoder.pull() {
+            Ok(None) => {
+                let mut buf: Vec<u8> = Vec::new();
+                if file
+                    .read_to_end(&mut buf)
+                    .with_context(|| format!("Unable to read input"))?
+                    == 0
+                {
+                    break; // EOF
+                }
+                decoder.feed(buf);
+            }
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
                 // lossily convert payload to UTF-8 string
                 if !stim.contains_key(&port) {
@@ -70,7 +81,6 @@ fn main() -> Result<()> {
                 }
             }
             Ok(Some(packet)) => println!("{:?}", packet),
-            Ok(None) => break,
 
             Err(e) if !opt.naive => {
                 println!("Error: {:?}", e);
