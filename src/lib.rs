@@ -405,8 +405,8 @@ impl Decoder {
         }
     }
 
-    /// Feed trace data into the decoder.
-    pub fn feed(&mut self, data: Vec<u8>) {
+    /// Push trace data into the decoder.
+    pub fn push(&mut self, data: Vec<u8>) {
         // To optimize the performance in pull, we must reverse the
         // input bitstream and prepend it. This is a costly operation,
         // but is better done here than elsewhere.
@@ -803,14 +803,14 @@ mod tests {
         trace_data.push(1 << 7);
 
         let mut decoder = Decoder::new();
-        decoder.feed(trace_data);
+        decoder.push(trace_data);
         assert_eq!(decoder.pull(), Ok(Some(TracePacket::Sync)));
     }
 
     #[test]
     fn decode_overflow_packet() {
         let mut decoder = Decoder::new();
-        decoder.feed([0b0111_0000].to_vec());
+        decoder.push([0b0111_0000].to_vec());
         assert_eq!(decoder.pull(), Ok(Some(TracePacket::Overflow)));
     }
 
@@ -818,7 +818,7 @@ mod tests {
     fn decode_local_timestamp_packets() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // LTS1
             0b1100_0000,
             0b1100_1001,
@@ -884,7 +884,7 @@ mod tests {
     fn decode_global_timestamp_packets() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // GTS1
             0b1001_0100,
             0b1000_0000,
@@ -932,7 +932,7 @@ mod tests {
     fn decode_extention_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b0111_1000,
         ].to_vec());
 
@@ -946,7 +946,7 @@ mod tests {
     fn decode_instrumentation_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b1000_1011,
             0b0000_0011,
             0b0000_1111,
@@ -973,7 +973,7 @@ mod tests {
     fn decode_eventcounterwrap_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b0000_0101,
             0b0010_1010,
         ].to_vec());
@@ -995,7 +995,7 @@ mod tests {
     fn decode_exceptiontrace_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b0000_1110,
             0b0010_0000,
             0b0011_0000
@@ -1014,7 +1014,7 @@ mod tests {
     fn decode_pcsample_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // PC sample (not sleeping)
             0b0001_0111,
             0b0000_0011,
@@ -1043,7 +1043,7 @@ mod tests {
     fn decode_datatracepc_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b0111_0111,
             0b0000_0011,
             0b0000_1111,
@@ -1064,7 +1064,7 @@ mod tests {
     fn decode_datatraceaddress_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             0b0110_1110,
             0b0000_0011,
             0b0000_1111,
@@ -1087,7 +1087,7 @@ mod tests {
     fn decode_datatracevalue_packet() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // four-byte (word) payload
             0b1010_1111,
             0b0000_0011,

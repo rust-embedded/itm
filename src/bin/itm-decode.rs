@@ -58,7 +58,7 @@ fn main() -> Result<()> {
                 {
                     break; // EOF
                 }
-                decoder.feed(buf);
+                decoder.push(buf);
             }
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
                 // lossily convert payload to UTF-8 string
