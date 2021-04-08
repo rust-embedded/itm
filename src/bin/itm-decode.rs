@@ -45,7 +45,11 @@ fn main() -> Result<()> {
     };
 
     let mut decoder = Decoder::new();
-    let mut stim = BTreeMap::new();
+    let mut stim = if opt.instr_as_string {
+        Some(BTreeMap::new())
+    } else {
+        None
+    };
 
     loop {
         match decoder.pull() {
@@ -61,6 +65,7 @@ fn main() -> Result<()> {
                 decoder.push(buf.to_vec());
             }
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
+                let stim = stim.as_mut().unwrap();
                 // lossily convert payload to UTF-8 string
                 if !stim.contains_key(&port) {
                     stim.insert(port, String::new());
@@ -94,12 +99,14 @@ fn main() -> Result<()> {
         }
     }
 
-    if stim.iter().any(|(_, string)| !string.is_empty()) {
-        println!("Warning: decoded incomplete UTF-8 strings from instrumentation packets:");
-    }
-    for (port, string) in stim {
-        for line in string.lines() {
-            println!("port {}> {}", port, line);
+    if let Some(stim) = stim {
+        if stim.iter().any(|(_, string)| !string.is_empty()) {
+            println!("Warning: decoded incomplete UTF-8 strings from instrumentation packets:");
+        }
+        for (port, string) in stim {
+            for line in string.lines() {
+                println!("port {}> {}", port, line);
+            }
         }
     }
 
