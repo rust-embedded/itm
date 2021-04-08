@@ -28,7 +28,7 @@ struct Opt {
     #[structopt(
         name = "FILE",
         parse(from_os_str),
-        help = "Raw trace input file. If omitted, expects raw trace on stdin instead."
+        help = "Raw trace input file. If \"-\" or omitted, expects raw trace on stdin instead."
     )]
     file: Option<PathBuf>,
 }
@@ -38,10 +38,10 @@ fn main() -> Result<()> {
 
     // Open the given file, or stdin
     let mut file: Box<dyn BufRead> = match opt.file {
-        Some(ref file) => Box::new(BufReader::new(
+        Some(ref file) if file.to_str() != Some("-") => Box::new(BufReader::new(
             File::open(file.clone()).with_context(|| format!("Failed to open {:?}", file))?,
         )),
-        None => Box::new(BufReader::new(io::stdin())),
+        _ => Box::new(BufReader::new(io::stdin())),
     };
 
     let mut decoder = Decoder::new();
