@@ -50,15 +50,15 @@ fn main() -> Result<()> {
     loop {
         match decoder.pull() {
             Ok(None) => {
-                let mut buf: Vec<u8> = Vec::new();
+                let mut buf = [0 as u8; 8];
                 if file
-                    .read_to_end(&mut buf)
+                    .read(&mut buf)
                     .with_context(|| format!("Unable to read input"))?
                     == 0
                 {
                     break; // EOF
                 }
-                decoder.push(buf);
+                decoder.push(buf.to_vec());
             }
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
                 // lossily convert payload to UTF-8 string
