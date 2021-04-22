@@ -674,9 +674,9 @@ impl Decoder {
                         Ok(TracePacket::DataTraceValue {
                             comparator,
                             access_type: if d == 0 {
-                                MemoryAccessType::Write
-                            } else {
                                 MemoryAccessType::Read
+                            } else {
+                                MemoryAccessType::Write
                             },
                             value: payload,
                         })
