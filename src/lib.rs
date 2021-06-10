@@ -1108,7 +1108,7 @@ mod tests {
         for packet in [
             TracePacket::DataTraceValue {
                 comparator: 0b10,
-                access_type: MemoryAccessType::Read,
+                access_type: MemoryAccessType::Write,
                 #[rustfmt::skip]
                 value: [
                     0b0000_0011,
@@ -1119,7 +1119,7 @@ mod tests {
             },
             TracePacket::DataTraceValue {
                 comparator: 0b10,
-                access_type: MemoryAccessType::Read,
+                access_type: MemoryAccessType::Write,
                 #[rustfmt::skip]
                 value: [
                     0b0000_0011,
@@ -1128,7 +1128,7 @@ mod tests {
             },
             TracePacket::DataTraceValue {
                 comparator: 0b10,
-                access_type: MemoryAccessType::Read,
+                access_type: MemoryAccessType::Write,
                 #[rustfmt::skip]
                 value: [
                     0b0000_0011,
