@@ -19,6 +19,45 @@ use std::convert::TryInto;
 #[cfg(feature = "serde")]
 use serde_crate::{Deserialize, Serialize};
 
+/// Re-exports for exception types from the `cortex-m` crate.
+pub mod cortex_m {
+    /// Denotes the exception type (interrupt event) of the processor.
+    /// (Table B1-4)
+    pub use cortex_m::peripheral::scb::{Exception, VectActive};
+
+    /// Verbatim copy of used `cortex_m` enums for serde functionality.
+    /// Should not be used directly. Public because serde requires it.
+    /// See <https://serde.rs/remote-derive.html>
+    #[cfg(feature = "serde")]
+    pub mod serde {
+        use super::{Exception, VectActive};
+        use serde_crate::{Deserialize, Serialize};
+
+        #[derive(Serialize, Deserialize)]
+        #[serde(crate = "serde_crate", remote = "Exception")]
+        pub enum ExceptionDef {
+            NonMaskableInt,
+            HardFault,
+            MemoryManagement,
+            BusFault,
+            UsageFault,
+            SecureFault,
+            SVCall,
+            DebugMonitor,
+            PendSV,
+            SysTick,
+        }
+
+        #[derive(Serialize, Deserialize)]
+        #[serde(crate = "serde_crate", remote = "VectActive")]
+        pub enum VectActiveDef {
+            ThreadMode,
+            Exception(#[serde(with = "ExceptionDef")] Exception),
+            Interrupt { irqn: u8 },
+        }
+    }
+}
+
 /// The set of possible packet types that may be decoded.
 ///
 /// Specification would suggest an implementation of two enum types, but
@@ -128,7 +167,8 @@ pub enum TracePacket {
     /// The processor has entered, exit, or returned to an exception.
     /// (Appendix D4.3.2)
     ExceptionTrace {
-        exception: ExceptionType,
+        #[cfg_attr(feature = "serde", serde(with = "cortex_m::serde::VectActiveDef"))]
+        exception: cortex_m::VectActive,
         action: ExceptionAction,
     },
 
@@ -186,28 +226,6 @@ pub enum ExceptionAction {
 
     /// Exception was returned to.
     Returned,
-}
-
-/// Denotes the exception type (interrupt event) of the processor.
-/// (Table B1-4)
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub enum ExceptionType {
-    Reset,
-    Nmi,
-    HardFault,
-    MemManage,
-    BusFault,
-    UsageFault,
-    SVCall,
-    DebugMonitor,
-    PendSV,
-    SysTick,
-    ExternalInterrupt(usize),
 }
 
 /// Denotes the type of memory access.
@@ -603,27 +621,26 @@ impl Decoder {
                     return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
                 }
 
-                let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
                 let function = (payload[1] >> 4) & 0b11;
+                let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
+                let exception_number: u8 = if let Ok(nr) = exception_number.try_into() {
+                    nr
+                } else {
+                    return Err(DecoderError::InvalidExceptionTrace {
+                        exception: exception_number,
+                        function,
+                    });
+                };
+
                 return Ok(TracePacket::ExceptionTrace {
-                    exception: match exception_number {
-                        1 => ExceptionType::Reset,
-                        2 => ExceptionType::Nmi,
-                        3 => ExceptionType::HardFault,
-                        4 => ExceptionType::MemManage,
-                        5 => ExceptionType::BusFault,
-                        6 => ExceptionType::UsageFault,
-                        11 => ExceptionType::SVCall,
-                        12 => ExceptionType::DebugMonitor,
-                        14 => ExceptionType::PendSV,
-                        15 => ExceptionType::SysTick,
-                        n if n >= 16 => ExceptionType::ExternalInterrupt(n as usize - 16),
-                        _ => {
-                            return Err(DecoderError::InvalidExceptionTrace {
-                                exception: exception_number,
-                                function,
-                            })
-                        }
+                    exception: if let Some(exception) = cortex_m::VectActive::from(exception_number)
+                    {
+                        exception
+                    } else {
+                        return Err(DecoderError::InvalidExceptionTrace {
+                            exception: exception_number.into(),
+                            function,
+                        });
                     },
                     action: match function {
                         0b01 => ExceptionAction::Entered,
@@ -631,7 +648,7 @@ impl Decoder {
                         0b11 => ExceptionAction::Returned,
                         _ => {
                             return Err(DecoderError::InvalidExceptionTrace {
-                                exception: exception_number,
+                                exception: exception_number.into(),
                                 function,
                             })
                         }
@@ -1004,7 +1021,7 @@ mod tests {
         assert_eq!(
             decoder.pull(),
             Ok(Some(TracePacket::ExceptionTrace {
-                exception: ExceptionType::ExternalInterrupt(16),
+                exception: cortex_m::VectActive::Interrupt { irqn: 32 },
                 action: ExceptionAction::Returned,
             }))
         );
