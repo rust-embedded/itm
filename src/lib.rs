@@ -499,6 +499,19 @@ pub struct Decoder {
     pub ts_ctx: TimestampedContext,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+/// Association between a set of [TracePacket]s and their Timestamp.
+pub struct TimestampedTracePackets {
+    ///  Timestamp of [packets].
+    pub timestamp: Timestamp,
+    pub packets: Vec<TracePacket>,
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Decoder {
@@ -550,7 +563,7 @@ impl Decoder {
     }
 
     /// Pull the next set of ITM data packets (not timestamps) from the
-    /// decoder and associate a [Timestamp]. **Assumes that local
+    /// decoder and associates a [Timestamp]. **Assumes that local
     /// timestamps will be found in the bitstream.**
     ///
     /// According to (Appendix C1.7.1, page 710-711), a local timestamp
@@ -563,23 +576,24 @@ impl Decoder {
     /// [Timestamp]: local timestamps monotonically increase an internal
     /// delta counter; upon a global timestamps the base is updated, and
     /// the delta is reset.
-    pub fn pull_with_timestamp(
-        &mut self,
-    ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+    pub fn pull_with_timestamp(&mut self) -> Result<Option<TimestampedTracePackets>, DecoderError> {
         // Common functionality for LTS{1,2}
         fn assoc_packets_with_lts(
             packets: Vec<TracePacket>,
             ts: &mut Timestamp,
             lts: usize,
             data_relation: TimestampDataRelation,
-        ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+        ) -> Result<Option<TimestampedTracePackets>, DecoderError> {
             if let Some(ref mut delta) = ts.delta {
                 *delta += lts as usize;
             } else {
                 ts.delta = Some(lts);
             }
             ts.data_relation = Some(data_relation);
-            Ok(Some((packets, ts.clone())))
+            Ok(Some(TimestampedTracePackets {
+                timestamp: ts.clone(),
+                packets,
+            }))
         }
 
         loop {
@@ -644,7 +658,11 @@ impl Decoder {
 
                 // As above, but with local timestamps considered data: return the packet directly.
                 Ok(Some(packet)) if self.ts_ctx.only_gts => {
-                    return Ok(Some((vec![packet], self.ts_ctx.ts.clone())))
+                    return Ok(Some(TimestampedTracePackets {
+                        timestamp: self.ts_ctx.ts.clone(),
+                        packets: vec![packet],
+                    }));
+                    // return Ok(Some((vec![packet], self.ts_ctx.ts.clone())))
                 }
                 _ => unreachable!(),
             }

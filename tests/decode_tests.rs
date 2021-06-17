@@ -389,47 +389,47 @@ fn pull_with_timestamp() {
         ].to_vec());
 
     for set in [
-        Ok(Some((
-            [
+        Ok(Some(TimestampedTracePackets {
+            packets: [
                 TracePacket::PCSample { pc: None },
                 TracePacket::PCSample { pc: None },
                 TracePacket::PCSample { pc: None },
             ]
             .into(),
-            Timestamp {
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: Some(0b1_1001001),
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: false,
             },
-        ))),
-        Ok(Some((
-            [TracePacket::PCSample { pc: None }].into(),
-            Timestamp {
+        })),
+        Ok(Some(TimestampedTracePackets {
+            packets: [TracePacket::PCSample { pc: None }].into(),
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: Some(0b1_1001001 * 2),
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: false,
             },
-        ))),
-        Ok(Some((
-            [TracePacket::Overflow].into(),
-            Timestamp {
+        })),
+        Ok(Some(TimestampedTracePackets {
+            packets: [TracePacket::Overflow].into(),
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: Some(0b1_1001001 * 3),
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: true,
             },
-        ))),
-        Ok(Some((
-            [].into(),
-            Timestamp {
+        })),
+        Ok(Some(TimestampedTracePackets {
+            packets: [].into(),
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: Some(0b1_1001001),
                 data_relation: Some(TimestampDataRelation::UnknownAssocEventDelay),
                 diverged: false,
             },
-        ))),
+        })),
         Ok(None),
     ]
     .iter()
@@ -481,37 +481,37 @@ fn pull_with_timestamp_gts_only() {
         ].to_vec());
 
     for set in [
-        Ok(Some((
-            [TracePacket::PCSample { pc: None }].into(),
-            Timestamp {
+        Ok(Some(TimestampedTracePackets {
+            packets: [TracePacket::PCSample { pc: None }].into(),
+            timestamp: Timestamp {
                 base: None,
                 delta: None,
                 data_relation: None,
                 diverged: false,
             },
-        ))),
-        Ok(Some((
-            [TracePacket::PCSample { pc: None }].into(),
-            Timestamp {
+        })),
+        Ok(Some(TimestampedTracePackets {
+            packets: [TracePacket::PCSample { pc: None }].into(),
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: None,
                 data_relation: None,
                 diverged: false,
             },
-        ))),
-        Ok(Some((
-            [TracePacket::LocalTimestamp1 {
+        })),
+        Ok(Some(TimestampedTracePackets {
+            packets: [TracePacket::LocalTimestamp1 {
                 ts: 201,
                 data_relation: TimestampDataRelation::Sync,
             }]
             .into(),
-            Timestamp {
+            timestamp: Timestamp {
                 base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
                 delta: None,
                 data_relation: None,
                 diverged: false,
             },
-        ))),
+        })),
         Ok(None),
     ]
     .iter()
