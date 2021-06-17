@@ -8,10 +8,8 @@ edition = "2018"
 readme = "README.md"
 repository = "https://github.com/tmplt/itm-decode"
 license = "MIT OR Apache-2.0"
-description = "A sans-I/O library for decoding ITM and DWT packets"
+description = "A library for decoding ARM Cortex-m ITM and DWT packets"
 homepage = "https://github.com/tmplt/itm-decode"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 bitmatch = "0.1.1"
