@@ -13,8 +13,7 @@ homepage = "https://github.com/tmplt/itm-decode"
 
 [dependencies]
 bitmatch = "0.1.1"
-bitvec = "0.19.4"
-funty = "=1.1.0"
+bitvec = "0.22"
 cortex-m = { version = "0.6", default-features = false }
 
 # only required by itm-decode executable
