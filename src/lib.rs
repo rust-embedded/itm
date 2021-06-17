@@ -1360,7 +1360,7 @@ mod tests {
     fn pull_with_timestamp() {
         let mut decoder = Decoder::new();
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // PC sample (sleeping)
             0b0001_0101,
             0b0000_0000,
@@ -1494,7 +1494,7 @@ mod tests {
         let mut decoder = Decoder::new();
         decoder.only_global_timestamps(true);
         #[rustfmt::skip]
-        decoder.feed([
+        decoder.push([
             // PC sample (sleeping)
             0b0001_0101,
             0b0000_0000,
