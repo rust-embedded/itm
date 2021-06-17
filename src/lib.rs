@@ -356,15 +356,6 @@ pub enum DecoderError {
     },
 }
 
-/// ITM and DWT packet protocol decoder.
-pub struct Decoder {
-    /// The incoming bytes to the decoder.
-    pub incoming: BitVec,
-
-    /// The current state of the decoder.
-    pub state: DecoderState,
-}
-
 /// The decoder's possible states. The default decoder state is `Header`
 /// and will always return there after a maximum of two steps. (E.g. if
 /// the current state is `Syncing` or `HardwareSource`, the next state
@@ -415,11 +406,105 @@ pub enum DecoderState {
     GlobalTimestamp2 { payload: Vec<u8> },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(crate = "serde_crate")
+)]
+/// Combined timestamp generated from local and global timestamp
+/// packets. Field values relate to the target's global timestamp clock.
+/// See (Appendix C1, page 713).
+pub struct Timestamp {
+    /// A base timestamp upon which to apply the delta. `Some(base)` if
+    /// both a GTS1 and GTS2 packets where received.
+    pub base: Option<usize>,
+
+    /// A monotonically increasing local timestamp counter which apply
+    /// on the base timestamp. The value is the sum of all local
+    /// timestamps since the last global timestamp. `Some(delta)` if at
+    /// least one LTS1/LTS2 where received; or, if global timestamps are
+    /// enabled, if at least one LTS1/LTS2 where received since the last
+    /// global timestamp.
+    pub delta: Option<usize>,
+
+    /// In what manner this timestamp relate to the associated data
+    /// packets, if known.
+    pub data_relation: Option<TimestampDataRelation>,
+
+    /// An overflow packet was recieved, which may have been caused by a
+    /// local timestamp counter overflow. See (Appendix D4.2.3). The
+    /// timestamp in this structure is now potentially diverged from the
+    /// true timestamp by the maximum value of the local timestamp
+    /// counter (implementation defined), and will be considered such
+    /// until the next global timestamp.
+    pub diverged: bool,
+}
+
+impl Default for Timestamp {
+    fn default() -> Self {
+        Timestamp {
+            base: None,
+            delta: None,
+            data_relation: None,
+            diverged: false,
+        }
+    }
+}
+
+/// A context in which to record the current timestamp between calls to [Decoder::pull_with_timestamp].
+pub struct TimestampedContext {
+    /// Data packets associated with [TimestampedContext::ts] in this structure.
+    pub packets: Vec<TracePacket>,
+
+    /// The potentially received [TracePacket::GlobalTimestamp1] packet.
+    /// Used in combination with [TimestampedContext::gts2] to update
+    /// [Timestamp::base].
+    pub gts1: Option<usize>,
+
+    /// The potentially received [TracePacket::GlobalTimestamp2] packet.
+    /// Used in combination with [TimestampedContext::gts1] to update
+    /// [Timestamp::base].
+    pub gts2: Option<usize>,
+
+    /// The current timestamp.
+    pub ts: Timestamp,
+
+    /// Whether to only process global timestamps in the bitstream.
+    /// Defaults to false.
+    pub only_gts: bool,
+}
+
+impl Default for TimestampedContext {
+    fn default() -> Self {
+        TimestampedContext {
+            packets: vec![],
+            gts1: None,
+            gts2: None,
+            ts: Timestamp::default(),
+            only_gts: false,
+        }
+    }
+}
+
+/// ITM and DWT packet protocol decoder.
+pub struct Decoder {
+    /// The incoming bytes to the decoder.
+    pub incoming: BitVec,
+
+    /// The current state of the decoder.
+    pub state: DecoderState,
+
+    /// Timestamp context. Used exclusively in [Decoder::pull_with_timestamp].
+    pub ts_ctx: TimestampedContext,
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Decoder {
             incoming: BitVec::new(),
             state: DecoderState::Header,
+            ts_ctx: TimestampedContext::default(),
         }
     }
 
@@ -453,6 +538,125 @@ impl Decoder {
                     e => return e,
                 },
                 _ => return Ok(None),
+            }
+        }
+    }
+
+    /// Configure whether only global timestamps should be processed in
+    /// the bitstream. See [TimestampedContext::only_gts]. Only affects
+    /// the operation of [Decoder::pull_with_timestamp].
+    pub fn only_global_timestamps(&mut self, only_gts: bool) {
+        self.ts_ctx.only_gts = only_gts;
+    }
+
+    /// Pull the next set of ITM data packets (not timestamps) from the
+    /// decoder and associate a [Timestamp]. **Assumes that local
+    /// timestamps will be found in the bitstream.**
+    ///
+    /// According to (Appendix C1.7.1, page 710-711), a local timestamp
+    /// relating to a single, or to a stream of back-to-back packets, is
+    /// generated and sent after the data packets in question in the
+    /// bitstream.
+    ///
+    /// This function thus [Decoder::pull]s packets until a local
+    /// timestamp is read, and opportunely calculates an associated
+    /// [Timestamp]: local timestamps monotonically increase an internal
+    /// delta counter; upon a global timestamps the base is updated, and
+    /// the delta is reset.
+    pub fn pull_with_timestamp(
+        &mut self,
+    ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+        // Common functionality for LTS{1,2}
+        fn assoc_packets_with_lts(
+            packets: Vec<TracePacket>,
+            ts: &mut Timestamp,
+            lts: usize,
+            data_relation: TimestampDataRelation,
+        ) -> Result<Option<(Vec<TracePacket>, Timestamp)>, DecoderError> {
+            if let Some(ref mut delta) = ts.delta {
+                *delta += lts as usize;
+            } else {
+                ts.delta = Some(lts);
+            }
+            ts.data_relation = Some(data_relation);
+            Ok(Some((packets, ts.clone())))
+        }
+
+        loop {
+            match self.pull() {
+                // No packets remaining or an error, just propagate.
+                Ok(None) => return Ok(None),
+                Err(e) => return Err(e),
+
+                // A local timestamp: packets received after the last
+                // local timestamp (all self.ts_ctx.packets) relate to
+                // this local timestamp. Return the packets and
+                // timestamp.
+                Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation }))
+                    if !self.ts_ctx.only_gts =>
+                {
+                    return assoc_packets_with_lts(
+                        self.ts_ctx.packets.drain(..).collect(),
+                        &mut self.ts_ctx.ts,
+                        ts as usize,
+                        data_relation,
+                    );
+                }
+                Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.ts_ctx.only_gts => {
+                    return assoc_packets_with_lts(
+                        self.ts_ctx.packets.drain(..).collect(),
+                        &mut self.ts_ctx.ts,
+                        ts as usize,
+                        TimestampDataRelation::Sync,
+                    );
+                }
+
+                // A global timestamp: store until we have both the
+                // upper (GTS2) and lower bits (GTS1).
+                Ok(Some(TracePacket::GlobalTimestamp1 { ts, wrap, clkch })) => {
+                    self.ts_ctx.gts1 = Some(ts as usize);
+                    if wrap {
+                        // upper bits have changed; GTS2 incoming
+                        self.ts_ctx.gts2 = None;
+                    }
+                    if clkch {
+                        // changed input clock to ITM; full GTS incoming
+                        self.ts_ctx.gts1 = None;
+                        self.ts_ctx.gts2 = None;
+                    }
+                }
+                Ok(Some(TracePacket::GlobalTimestamp2 { ts })) => {
+                    self.ts_ctx.gts2 = Some(ts as usize)
+                }
+
+                // An overflow: the local timestamp may potentially have
+                // wrapped around, but this is not necessarily the case.
+                // We can in any case no longer generate an accurate
+                // Timestamp.
+                Ok(Some(TracePacket::Overflow)) => {
+                    self.ts_ctx.ts.diverged = true;
+                    self.ts_ctx.packets.push(TracePacket::Overflow);
+                }
+
+                // A packet that doesn't relate to the timestamp: stash
+                // it until the next local timestamp.
+                Ok(Some(packet)) if !self.ts_ctx.only_gts => self.ts_ctx.packets.push(packet),
+
+                // As above, but with local timestamps considered data: return the packet directly.
+                Ok(Some(packet)) if self.ts_ctx.only_gts => {
+                    return Ok(Some((vec![packet], self.ts_ctx.ts.clone())))
+                }
+                _ => unreachable!(),
+            }
+
+            // Do we have enough info two calculate a new base for the timestamp?
+            if let (Some(lower), Some(upper)) = (self.ts_ctx.gts1, self.ts_ctx.gts2) {
+                // XXX Should we move this calc into some Timestamp::from()?
+                const GTS2_TS_SHIFT: usize = 26; // see (Appendix D4.2.5).
+                self.ts_ctx.ts = Timestamp::default();
+                self.ts_ctx.ts.base = Some((upper << GTS2_TS_SHIFT) | lower);
+                self.ts_ctx.gts1 = None;
+                self.ts_ctx.gts2 = None;
             }
         }
     }
@@ -804,12 +1008,6 @@ impl Decoder {
     }
 }
 
-impl Default for Decoder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1155,6 +1353,221 @@ mod tests {
         .iter()
         {
             assert_eq!(decoder.pull(), Ok(Some(packet.clone())));
+        }
+    }
+
+    #[test]
+    fn pull_with_timestamp() {
+        let mut decoder = Decoder::new();
+        #[rustfmt::skip]
+        decoder.feed([
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Overflow
+            0b0111_0000,
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // LTS1
+            0b1111_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Pull!
+        ].to_vec());
+
+        for set in [
+            Ok(Some((
+                [
+                    TracePacket::PCSample { pc: None },
+                    TracePacket::PCSample { pc: None },
+                    TracePacket::PCSample { pc: None },
+                ]
+                .into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001 * 2),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::Overflow].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001 * 3),
+                    data_relation: Some(TimestampDataRelation::Sync),
+                    diverged: true,
+                },
+            ))),
+            Ok(Some((
+                [].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: Some(0b1_1001001),
+                    data_relation: Some(TimestampDataRelation::UnknownAssocEventDelay),
+                    diverged: false,
+                },
+            ))),
+            Ok(None),
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull_with_timestamp(), *set);
+        }
+    }
+
+    #[test]
+    fn pull_with_timestamp_gts_only() {
+        let mut decoder = Decoder::new();
+        decoder.only_global_timestamps(true);
+        #[rustfmt::skip]
+        decoder.feed([
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // Pull!
+
+            // GTS1
+            0b1001_0100,
+            0b1000_0000,
+            0b1010_0000,
+            0b1000_0100,
+            0b0000_0000,
+
+            // GTS2 (48-bit)
+            0b1011_0100,
+            0b1011_1101,
+            0b1111_0100,
+            0b1001_0001,
+            0b0000_0001,
+
+            // PC sample (sleeping)
+            0b0001_0101,
+            0b0000_0000,
+
+            // Pull!
+
+            // LTS1
+            0b1100_0000,
+            0b1100_1001,
+            0b0000_0001,
+
+            // Pull!
+
+            // Pull!
+        ].to_vec());
+
+        for set in [
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: None,
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::PCSample { pc: None }].into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(Some((
+                [TracePacket::LocalTimestamp1 {
+                    ts: 201,
+                    data_relation: TimestampDataRelation::Sync,
+                }]
+                .into(),
+                Timestamp {
+                    base: Some((0b1_0010001_1110100_0111101 << 26) | (0b0_0000100_0100000_0000000)),
+                    delta: None,
+                    data_relation: None,
+                    diverged: false,
+                },
+            ))),
+            Ok(None),
+        ]
+        .iter()
+        {
+            assert_eq!(decoder.pull_with_timestamp(), *set);
         }
     }
 }
