@@ -516,11 +516,11 @@ impl Decoder {
     }
 
     /// Push trace data into the decoder.
-    pub fn push(&mut self, data: Vec<u8>) {
+    pub fn push(&mut self, data: &[u8]) {
         // To optimize the performance in pull, we must reverse the
         // input bitstream and prepend it. This is a costly operation,
         // but is better done here than elsewhere.
-        let mut bv = BitVec::<LocalBits, _>::from_vec(data);
+        let mut bv = BitVec::<LocalBits, _>::from_vec(data.to_vec());
         bv.reverse();
         bv.append(&mut self.incoming);
         self.incoming.append(&mut bv);

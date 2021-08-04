@@ -62,7 +62,7 @@ fn main() -> Result<()> {
                 {
                     break; // EOF
                 }
-                decoder.push(buf.to_vec());
+                decoder.push(&buf);
             }
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
                 let stim = stim.as_mut().unwrap();
