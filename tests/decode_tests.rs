@@ -5,21 +5,21 @@ fn decode_sync_packet() {
     let mut trace_data: Vec<u8> = [0; 47 / 8].to_vec();
     trace_data.push(1 << 7);
 
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     decoder.push(&trace_data);
     assert_eq!(decoder.pull(), Ok(Some(TracePacket::Sync)));
 }
 
 #[test]
 fn decode_overflow_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     decoder.push(&[0b0111_0000]);
     assert_eq!(decoder.pull(), Ok(Some(TracePacket::Overflow)));
 }
 
 #[test]
 fn decode_local_timestamp_packets() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             // LTS1
@@ -46,7 +46,7 @@ fn decode_local_timestamp_packets() {
 
 #[test]
 fn decode_global_timestamp_packets() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             // GTS1
@@ -94,7 +94,7 @@ fn decode_global_timestamp_packets() {
 
 #[test]
 fn decode_extention_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b0111_1000,
@@ -108,7 +108,7 @@ fn decode_extention_packet() {
 
 #[test]
 fn decode_instrumentation_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b1000_1011,
@@ -135,7 +135,7 @@ fn decode_instrumentation_packet() {
 
 #[test]
 fn decode_eventcounterwrap_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b0000_0101,
@@ -157,7 +157,7 @@ fn decode_eventcounterwrap_packet() {
 
 #[test]
 fn decode_exceptiontrace_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b0000_1110,
@@ -176,7 +176,7 @@ fn decode_exceptiontrace_packet() {
 
 #[test]
 fn decode_pcsample_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             // PC sample (not sleeping)
@@ -205,7 +205,7 @@ fn decode_pcsample_packet() {
 
 #[test]
 fn decode_datatracepc_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b0111_0111,
@@ -226,7 +226,7 @@ fn decode_datatracepc_packet() {
 
 #[test]
 fn decode_datatraceaddress_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             0b0110_1110,
@@ -249,7 +249,7 @@ fn decode_datatraceaddress_packet() {
 
 #[test]
 fn decode_datatracevalue_packet() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             // four-byte (word) payload
@@ -307,7 +307,7 @@ fn decode_datatracevalue_packet() {
 
 #[test]
 fn pull_with_timestamp() {
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     #[rustfmt::skip]
         decoder.push(&[
             // PC sample (sleeping)
@@ -440,8 +440,7 @@ fn pull_with_timestamp() {
 
 #[test]
 fn pull_with_timestamp_gts_only() {
-    let mut decoder = Decoder::new();
-    decoder.only_global_timestamps(true);
+    let mut decoder = Decoder::new(DecoderOptions { only_gts: true });
     #[rustfmt::skip]
         decoder.push(&[
             // PC sample (sleeping)

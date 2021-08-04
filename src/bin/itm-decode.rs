@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use itm_decode::{Decoder, TracePacket};
+use itm_decode::{Decoder, DecoderOptions, TracePacket};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
@@ -44,7 +44,7 @@ fn main() -> Result<()> {
         _ => Box::new(BufReader::new(io::stdin())),
     };
 
-    let mut decoder = Decoder::new();
+    let mut decoder = Decoder::new(DecoderOptions::default());
     let mut stim = if opt.instr_as_string {
         Some(BTreeMap::new())
     } else {

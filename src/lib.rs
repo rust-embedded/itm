@@ -445,10 +445,6 @@ pub struct TimestampedContext {
 
     /// The current timestamp.
     pub ts: Timestamp,
-
-    /// Whether to only process global timestamps in the bitstream.
-    /// Defaults to false.
-    pub only_gts: bool,
 }
 
 impl Default for TimestampedContext {
@@ -458,13 +454,26 @@ impl Default for TimestampedContext {
             gts1: None,
             gts2: None,
             ts: Timestamp::default(),
-            only_gts: false,
         }
+    }
+}
+
+pub struct DecoderOptions {
+    /// Whether to only process global timestamps in the bitstream on [Decoder::pull_with_timestamps].
+    pub only_gts: bool,
+}
+
+impl Default for DecoderOptions {
+    fn default() -> Self {
+        Self { only_gts: false }
     }
 }
 
 /// ITM and DWT packet protocol decoder.
 pub struct Decoder {
+    /// Decoder options
+    options: DecoderOptions,
+
     /// The incoming bytes to the decoder.
     incoming: BitVec,
 
@@ -494,8 +503,9 @@ enum HeaderVariant {
 }
 
 impl Decoder {
-    pub fn new() -> Self {
+    pub fn new(options: DecoderOptions) -> Self {
         Decoder {
+            options,
             incoming: BitVec::new(),
             sync: None,
             ts_ctx: TimestampedContext::default(),
@@ -536,13 +546,6 @@ impl Decoder {
 
         // header now contains the state; handle it.
         return self.process_stub(&stub);
-    }
-
-    /// Configure whether only global timestamps should be processed in
-    /// the bitstream. See [TimestampedContext::only_gts]. Only affects
-    /// the operation of [Decoder::pull_with_timestamp].
-    pub fn only_global_timestamps(&mut self, only_gts: bool) {
-        self.ts_ctx.only_gts = only_gts;
     }
 
     /// Pull the next set of ITM data packets (not timestamps) from the
@@ -592,7 +595,7 @@ impl Decoder {
                 // this local timestamp. Return the packets and
                 // timestamp.
                 Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation }))
-                    if !self.ts_ctx.only_gts =>
+                    if !self.options.only_gts =>
                 {
                     return assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
@@ -601,7 +604,7 @@ impl Decoder {
                         data_relation,
                     );
                 }
-                Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.ts_ctx.only_gts => {
+                Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.options.only_gts => {
                     return assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
                         &mut self.ts_ctx.ts,
@@ -639,15 +642,14 @@ impl Decoder {
 
                 // A packet that doesn't relate to the timestamp: stash
                 // it until the next local timestamp.
-                Ok(Some(packet)) if !self.ts_ctx.only_gts => self.ts_ctx.packets.push(packet),
+                Ok(Some(packet)) if !self.options.only_gts => self.ts_ctx.packets.push(packet),
 
                 // As above, but with local timestamps considered data: return the packet directly.
-                Ok(Some(packet)) if self.ts_ctx.only_gts => {
+                Ok(Some(packet)) if self.options.only_gts => {
                     return Ok(Some(TimestampedTracePackets {
                         timestamp: self.ts_ctx.ts.clone(),
                         packets: vec![packet],
                     }));
-                    // return Ok(Some((vec![packet], self.ts_ctx.ts.clone())))
                 }
                 _ => unreachable!(),
             }
@@ -1044,7 +1046,7 @@ mod tests {
 
     #[test]
     fn pull_bytes() {
-        let mut decoder = Decoder::new();
+        let mut decoder = Decoder::new(DecoderOptions::default());
         let payload = vec![0b1000_0000, 0b1010_0000, 0b1000_0100, 0b0110_0000];
         decoder.push(&payload);
         assert_eq!(decoder.pull_bytes(3).unwrap().len(), 3);
@@ -1052,7 +1054,7 @@ mod tests {
 
     #[test]
     fn pull_payload() {
-        let mut decoder = Decoder::new();
+        let mut decoder = Decoder::new(DecoderOptions::default());
         let payload = vec![0b1000_0000, 0b1010_0000, 0b1000_0100, 0b0110_0000];
         #[rustfmt::skip]
         decoder.push(&payload);
