@@ -513,7 +513,7 @@ impl Decoder {
         self.incoming.append(&mut bv);
     }
 
-    /// Pull the next decoded ITM packet from the decoder, if any and able.
+    /// Decode the next [TracePacket].
     pub fn pull(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
         if self.sync.is_some() {
             return self.handle_sync();
@@ -688,6 +688,7 @@ impl Decoder {
         Ok(None)
     }
 
+    /// Pulls a single byte from the incoming buffer.
     fn pull_byte(&mut self) -> u8 {
         let mut b: u8 = 0;
         for i in 0..8 {
@@ -697,6 +698,8 @@ impl Decoder {
         b
     }
 
+    /// Pulls `cnt` bytes from the incoming buffer, if `cnt` bytes are
+    /// available.
     fn pull_bytes(&mut self, cnt: usize) -> Option<Vec<u8>> {
         if self.incoming.len() < cnt * 8 {
             return None;
@@ -709,8 +712,10 @@ impl Decoder {
         Some(payload)
     }
 
+    /// Pulls bytes from the incoming buffer until the continuation-bit
+    /// is not set. All [PacketStub]s follow follow this payload schema.
+    /// (e.g. Appendix D4, Fig. D4-4)
     fn pull_payload(&mut self) -> Option<Vec<u8>> {
-        // is there a byte for which (b >> 7) & 1 == 0?
         let mut iter = self.incoming.rchunks(8);
         let mut cnt = 0;
         loop {
@@ -719,6 +724,10 @@ impl Decoder {
                 None => return None,
                 Some(b) if b.len() < 8 => return None,
                 Some(b) => match b.first_zero() {
+                    // bit 7 is not set: we have reached the end of the
+                    // payload
+                    //
+                    // TODO replace with Option::contains when stable
                     Some(0) => break,
                     _ => continue,
                 },
@@ -728,7 +737,6 @@ impl Decoder {
         Some(self.pull_bytes(cnt).unwrap())
     }
 
-    /// Processes a single byte from the bitstream and changes decoder state if necessary.
     fn process_stub(&mut self, state: &PacketStub) -> Result<Option<TracePacket>, MalformedPacket> {
         let packet = match state {
             PacketStub::Sync(count) => {
@@ -822,7 +830,7 @@ impl Decoder {
         ts | (((head[0] & mask) as u64) << (7 * rtail.len()))
     }
 
-    /// Decodes the payload of a hardware source packet, if able.
+    /// Decodes the payload of a hardware source packet.
     #[bitmatch]
     fn handle_hardware_source(
         disc_id: u8,
@@ -937,7 +945,7 @@ impl Decoder {
         }
     }
 
-    /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
+    /// Decodes the first byte of a packet, the header, into a complete packet or a packet stub.
     #[bitmatch]
     fn decode_header(header: u8) -> Result<HeaderVariant, MalformedPacket> {
         fn translate_ss(ss: u8) -> Option<usize> {
