@@ -1,5 +1,4 @@
-//! A [sans-I/O](https://sans-io.readthedocs.io/how-to-sans-io.html)
-//! decoder for the ITM and DWT packet protocol as specifed in the
+//! A decoder for the ITM and DWT packet protocol as specifed in the
 //! [ARMv7-M architecture reference manual, Appendix
 //! D4](https://developer.arm.com/documentation/ddi0403/ed/). Any
 //! references in this code base refers to this document.
@@ -58,10 +57,7 @@ pub mod cortex_m {
     }
 }
 
-/// The set of possible packet types that may be decoded.
-///
-/// Specification would suggest an implementation of two enum types, but
-/// that structure is here flattened to simplify the implementation.
+/// The set of valid packet types that can be decoded.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
@@ -210,7 +206,7 @@ pub enum TracePacket {
     },
 }
 
-/// Denotes the exception action taken by the processor. (Table D4-6)
+/// Denotes the action taken by the processor by a given exception. (Table D4-6)
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
@@ -284,16 +280,14 @@ pub enum TimestampDataRelation {
     UnknownAssocEventDelay,
 }
 
-/// A header or payload byte failed to be decoded. The state of the
-/// decoder is now in an unknown state and manual intervention is
-/// required.
+/// A header or payload byte failed to be decoded.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-pub enum DecoderError {
+pub enum MalformedPacket {
     /// Header is invalid and cannot be decoded.
     InvalidHeader(u8),
 
@@ -343,7 +337,7 @@ pub enum DecoderError {
 
     /// The number of zeroes in the Synchronization packet is less than
     /// 47.
-    InvalidSyncSize(usize),
+    InvalidSync(usize),
 
     /// A source packet (from software or hardware) contains an invalid
     /// expected payload size.
@@ -533,7 +527,7 @@ impl Decoder {
     }
 
     /// Pull the next decoded ITM packet from the decoder, if any and able.
-    pub fn pull(&mut self) -> Result<Option<TracePacket>, DecoderError> {
+    pub fn pull(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
         loop {
             match self.state {
                 DecoderState::Syncing(_) => return self.handle_sync(),
@@ -576,14 +570,16 @@ impl Decoder {
     /// [Timestamp]: local timestamps monotonically increase an internal
     /// delta counter; upon a global timestamps the base is updated, and
     /// the delta is reset.
-    pub fn pull_with_timestamp(&mut self) -> Result<Option<TimestampedTracePackets>, DecoderError> {
+    pub fn pull_with_timestamp(
+        &mut self,
+    ) -> Result<Option<TimestampedTracePackets>, MalformedPacket> {
         // Common functionality for LTS{1,2}
         fn assoc_packets_with_lts(
             packets: Vec<TracePacket>,
             ts: &mut Timestamp,
             lts: usize,
             data_relation: TimestampDataRelation,
-        ) -> Result<Option<TimestampedTracePackets>, DecoderError> {
+        ) -> Result<Option<TimestampedTracePackets>, MalformedPacket> {
             if let Some(ref mut delta) = ts.delta {
                 *delta += lts as usize;
             } else {
@@ -682,7 +678,7 @@ impl Decoder {
     /// Read zeros from the bitstream until the first bit is set. This
     /// realigns the incoming bitstream for further processing, which
     /// may not be 8-bit aligned.
-    fn handle_sync(&mut self) -> Result<Option<TracePacket>, DecoderError> {
+    fn handle_sync(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
         const MIN_ZEROS: usize = 47;
 
         if let DecoderState::Syncing(mut count) = self.state {
@@ -694,7 +690,7 @@ impl Decoder {
                     self.state = DecoderState::Header;
                     return Ok(Some(TracePacket::Sync));
                 } else {
-                    return Err(DecoderError::InvalidSyncSize(count));
+                    return Err(MalformedPacket::InvalidSync(count));
                 }
             }
         } else {
@@ -705,7 +701,7 @@ impl Decoder {
     }
 
     /// Processes a single byte from the bitstream and changes decoder state if necessary.
-    fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, DecoderError> {
+    fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, MalformedPacket> {
         let packet = match &mut self.state {
             DecoderState::Header => self.decode_header(b),
             DecoderState::Syncing(_count) => unreachable!(),
@@ -763,7 +759,7 @@ impl Decoder {
                                 4 => 47 - 26, // 48 bit timestamp
                                 6 => 63 - 26, // 64 bit timestamp
                                 _ => {
-                                    return Err(DecoderError::InvalidGTS2Size {
+                                    return Err(MalformedPacket::InvalidGTS2Size {
                                         payload: payload.to_vec(),
                                     })
                                 }
@@ -817,13 +813,16 @@ impl Decoder {
 
     /// Decodes the payload of a hardware source packet, if able.
     #[bitmatch]
-    fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, DecoderError> {
+    fn handle_hardware_source(
+        disc_id: u8,
+        payload: Vec<u8>,
+    ) -> Result<TracePacket, MalformedPacket> {
         match disc_id {
             0 => {
                 // event counter wrap
 
                 if payload.len() != 1 {
-                    return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
+                    return Err(MalformedPacket::InvalidHardwarePacket { disc_id, payload });
                 }
 
                 let b = payload[0];
@@ -840,7 +839,7 @@ impl Decoder {
                 // exception trace
 
                 if payload.len() != 2 {
-                    return Err(DecoderError::InvalidHardwarePacket { disc_id, payload });
+                    return Err(MalformedPacket::InvalidHardwarePacket { disc_id, payload });
                 }
 
                 let function = (payload[1] >> 4) & 0b11;
@@ -848,7 +847,7 @@ impl Decoder {
                 let exception_number: u8 = if let Ok(nr) = exception_number.try_into() {
                     nr
                 } else {
-                    return Err(DecoderError::InvalidExceptionTrace {
+                    return Err(MalformedPacket::InvalidExceptionTrace {
                         exception: exception_number,
                         function,
                     });
@@ -859,7 +858,7 @@ impl Decoder {
                     {
                         exception
                     } else {
-                        return Err(DecoderError::InvalidExceptionTrace {
+                        return Err(MalformedPacket::InvalidExceptionTrace {
                             exception: exception_number.into(),
                             function,
                         });
@@ -869,7 +868,7 @@ impl Decoder {
                         0b10 => ExceptionAction::Exited,
                         0b11 => ExceptionAction::Returned,
                         _ => {
-                            return Err(DecoderError::InvalidExceptionTrace {
+                            return Err(MalformedPacket::InvalidExceptionTrace {
                                 exception: exception_number.into(),
                                 function,
                             })
@@ -884,7 +883,7 @@ impl Decoder {
                     4 => Ok(TracePacket::PCSample {
                         pc: Some(u32::from_le_bytes(payload.try_into().unwrap())),
                     }),
-                    _ => Err(DecoderError::InvalidPCSampleSize { payload }),
+                    _ => Err(MalformedPacket::InvalidPCSampleSize { payload }),
                 }
             }
             8..=23 => {
@@ -920,7 +919,7 @@ impl Decoder {
                             value: payload,
                         })
                     }
-                    _ => Err(DecoderError::InvalidHardwarePacket { disc_id, payload }),
+                    _ => Err(MalformedPacket::InvalidHardwarePacket { disc_id, payload }),
                 }
             }
             _ => unreachable!(), // we already verify the discriminator when we decode the header
@@ -929,7 +928,7 @@ impl Decoder {
 
     /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
     #[bitmatch]
-    fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, DecoderError> {
+    fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, MalformedPacket> {
         fn translate_ss(ss: u8) -> Option<usize> {
             // See (Appendix D4.2.8, Table D4-4)
             Some(
@@ -994,7 +993,7 @@ impl Decoder {
                     expected_size: if let Some(s) = translate_ss(s) {
                         s
                     } else {
-                        return Err(DecoderError::InvalidSourcePayload { header, size: s });
+                        return Err(MalformedPacket::InvalidSourcePayload { header, size: s });
                     },
                 };
             }
@@ -1003,7 +1002,7 @@ impl Decoder {
                 let disc_id = a;
 
                 if !(0..=2).contains(&disc_id) && !(8..=23).contains(&disc_id) {
-                    return Err(DecoderError::InvalidHardwareDisc {
+                    return Err(MalformedPacket::InvalidHardwareDisc {
                         disc_id,
                         size: s.into(),
                     });
@@ -1015,11 +1014,11 @@ impl Decoder {
                     expected_size: if let Some(s) = translate_ss(s) {
                         s
                     } else {
-                        return Err(DecoderError::InvalidSourcePayload { header, size: s });
+                        return Err(MalformedPacket::InvalidSourcePayload { header, size: s });
                     },
                 };
             }
-            "hhhh_hhhh" => return Err(DecoderError::InvalidHeader(h)),
+            "hhhh_hhhh" => return Err(MalformedPacket::InvalidHeader(h)),
         }
 
         Ok(None)
