@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use itm_decode::{Decoder, DecoderState, TracePacket};
+use itm_decode::{Decoder, TracePacket};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Read};
@@ -93,7 +93,6 @@ fn main() -> Result<()> {
             }
             Err(e) if opt.naive => {
                 println!("Error: {:?}", e);
-                decoder.state = DecoderState::Header;
             }
             _ => unreachable!(),
         }

@@ -354,61 +354,43 @@ pub enum MalformedPacket {
 /// and will always return there after a maximum of two steps. (E.g. if
 /// the current state is `Syncing` or `HardwareSource`, the next state
 /// is `Header` again.)
-#[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(crate = "serde_crate")
-)]
-pub enum DecoderState {
-    /// Next byte will be decoded as a header byte.
-    Header,
-
+enum PacketStub {
     /// Next zero bits will be assumed to be part of a a Synchronization
-    /// packet until a one is encountered.
-    Syncing(usize),
+    /// packet until a set bit is encountered.
+    Sync(usize),
 
     /// Next bytes will be assumed to be part of an Instrumentation
     /// packet, until `payload` contains `expected_size` bytes.
-    Instrumentation {
-        port: u8,
-        payload: Vec<u8>,
-        expected_size: usize,
-    },
+    Instrumentation { port: u8, expected_size: usize },
 
     /// Next bytes will be assumed to be part of a Hardware source
     /// packet, until `payload` contains `expected_size` bytes.
-    HardwareSource {
-        disc_id: u8,
-        payload: Vec<u8>,
-        expected_size: usize,
-    },
+    HardwareSource { disc_id: u8, expected_size: usize },
 
     /// Next bytes will be assumed to be part of a LocalTimestamp{1,2}
     /// packet, until the MSB is set.
     LocalTimestamp {
         data_relation: TimestampDataRelation,
-        payload: Vec<u8>,
     },
 
     /// Next bytes will be assumed to be part of a GlobalTimestamp1
     /// packet, until the MSB is set.
-    GlobalTimestamp1 { payload: Vec<u8> },
+    GlobalTimestamp1,
 
     /// Next bytes will be assumed to be part of a GlobalTimestamp2
     /// packet, until the MSB is set.
-    GlobalTimestamp2 { payload: Vec<u8> },
+    GlobalTimestamp2,
 }
 
+/// Combined timestamp generated from local and global timestamp
+/// packets. Field values relate to the target's global timestamp clock.
+/// See (Appendix C1, page 713).
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-/// Combined timestamp generated from local and global timestamp
-/// packets. Field values relate to the target's global timestamp clock.
-/// See (Appendix C1, page 713).
 pub struct Timestamp {
     /// A base timestamp upon which to apply the delta. `Some(base)` if
     /// both a GTS1 and GTS2 packets where received.
@@ -484,33 +466,38 @@ impl Default for TimestampedContext {
 /// ITM and DWT packet protocol decoder.
 pub struct Decoder {
     /// The incoming bytes to the decoder.
-    pub incoming: BitVec,
+    incoming: BitVec,
 
-    /// The current state of the decoder.
-    pub state: DecoderState,
+    /// Whether the decoder is in a state of synchronization.
+    sync: Option<usize>,
 
     /// Timestamp context. Used exclusively in [Decoder::pull_with_timestamp].
-    pub ts_ctx: TimestampedContext,
+    ts_ctx: TimestampedContext,
 }
 
+/// Association between a set of [TracePacket]s and their Timestamp.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
     serde(crate = "serde_crate")
 )]
-/// Association between a set of [TracePacket]s and their Timestamp.
 pub struct TimestampedTracePackets {
     ///  Timestamp of [packets].
     pub timestamp: Timestamp,
     pub packets: Vec<TracePacket>,
 }
 
+enum HeaderVariant {
+    Packet(TracePacket),
+    Stub(PacketStub),
+}
+
 impl Decoder {
     pub fn new() -> Self {
         Decoder {
             incoming: BitVec::new(),
-            state: DecoderState::Header,
+            sync: None,
             ts_ctx: TimestampedContext::default(),
         }
     }
@@ -528,25 +515,27 @@ impl Decoder {
 
     /// Pull the next decoded ITM packet from the decoder, if any and able.
     pub fn pull(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
-        loop {
-            match self.state {
-                DecoderState::Syncing(_) => return self.handle_sync(),
-                // Decode bytes until a packet is generated, or until we run out of bytes.
-                _ if self.incoming.len() >= 8 => match {
-                    let mut b: u8 = 0;
-                    for i in 0..8 {
-                        b |= (self.incoming.pop().unwrap() as u8) << i;
-                    }
-
-                    self.process_byte(b)
-                } {
-                    Ok(Some(packet)) => return Ok(Some(packet)),
-                    Ok(None) => continue,
-                    e => return e,
-                },
-                _ => return Ok(None),
-            }
+        if self.sync.is_some() {
+            return self.handle_sync();
         }
+
+        assert!(self.sync.is_none());
+
+        if self.incoming.len() < 8 {
+            // No header to decode, nothing to do
+            return Ok(None);
+        }
+
+        let stub = match {
+            let b = self.pull_byte();
+            Self::decode_header(b)?
+        } {
+            HeaderVariant::Packet(p) => return Ok(Some(p)),
+            HeaderVariant::Stub(s) => s,
+        };
+
+        // header now contains the state; handle it.
+        return self.process_stub(&stub);
     }
 
     /// Configure whether only global timestamps should be processed in
@@ -681,66 +670,96 @@ impl Decoder {
     fn handle_sync(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
         const MIN_ZEROS: usize = 47;
 
-        if let DecoderState::Syncing(mut count) = self.state {
+        if let Some(mut count) = self.sync {
             while let Some(bit) = self.incoming.pop() {
                 if !bit && count < MIN_ZEROS {
                     count += 1;
                     continue;
                 } else if bit && count >= MIN_ZEROS {
-                    self.state = DecoderState::Header;
+                    self.sync = None;
                     return Ok(Some(TracePacket::Sync));
                 } else {
+                    self.sync = None;
                     return Err(MalformedPacket::InvalidSync(count));
                 }
             }
-        } else {
-            unreachable!();
         }
 
         Ok(None)
     }
 
+    fn pull_byte(&mut self) -> u8 {
+        let mut b: u8 = 0;
+        for i in 0..8 {
+            b |= (self.incoming.pop().unwrap() as u8) << i;
+        }
+
+        b
+    }
+
+    fn pull_bytes(&mut self, cnt: usize) -> Option<Vec<u8>> {
+        if self.incoming.len() < cnt * 8 {
+            return None;
+        }
+
+        let mut payload = vec![];
+        for _ in 0..cnt {
+            payload.push(self.pull_byte());
+        }
+        Some(payload)
+    }
+
+    fn pull_payload(&mut self) -> Option<Vec<u8>> {
+        // is there a byte for which (b >> 7) & 1 == 0?
+        let mut iter = self.incoming.rchunks(8);
+        let mut cnt = 0;
+        loop {
+            cnt = cnt + 1;
+            match iter.next() {
+                None => return None,
+                Some(b) if b.len() < 8 => return None,
+                Some(b) => match b.first_zero() {
+                    Some(0) => break,
+                    _ => continue,
+                },
+            }
+        }
+
+        Some(self.pull_bytes(cnt).unwrap())
+    }
+
     /// Processes a single byte from the bitstream and changes decoder state if necessary.
-    fn process_byte(&mut self, b: u8) -> Result<Option<TracePacket>, MalformedPacket> {
-        let packet = match &mut self.state {
-            DecoderState::Header => self.decode_header(b),
-            DecoderState::Syncing(_count) => unreachable!(),
-            DecoderState::HardwareSource {
+    fn process_stub(&mut self, state: &PacketStub) -> Result<Option<TracePacket>, MalformedPacket> {
+        let packet = match state {
+            PacketStub::Sync(count) => {
+                self.sync = Some(*count);
+                self.handle_sync()
+            }
+
+            PacketStub::HardwareSource {
                 disc_id,
-                payload,
                 expected_size,
             } => {
-                payload.push(b);
-                if payload.len() == *expected_size {
-                    match Decoder::handle_hardware_source(*disc_id, payload.to_vec()) {
-                        Ok(packet) => Ok(Some(packet)),
-                        Err(e) => Err(e),
-                    }
+                if let Some(payload) = self.pull_bytes(*expected_size) {
+                    Self::handle_hardware_source(*disc_id, payload).map(|p| Some(p))
                 } else {
                     Ok(None)
                 }
             }
-            DecoderState::LocalTimestamp {
-                data_relation,
-                payload,
-            } => {
-                let last_byte = (b >> 7) & 1 == 0;
-                payload.push(b);
-                if last_byte {
+            PacketStub::LocalTimestamp { data_relation } => {
+                if let Some(payload) = self.pull_payload() {
                     Ok(Some(TracePacket::LocalTimestamp1 {
                         data_relation: data_relation.clone(),
-                        ts: Decoder::extract_timestamp(payload.to_vec(), 27),
+                        ts: Decoder::extract_timestamp(payload, 27),
                     }))
                 } else {
                     Ok(None)
                 }
             }
-            DecoderState::GlobalTimestamp1 { payload } => {
-                let last_byte = (b >> 7) & 1 == 0;
-                payload.push(b);
-                if last_byte {
+            PacketStub::GlobalTimestamp1 => {
+                if let Some(payload) = self.pull_payload() {
                     Ok(Some(TracePacket::GlobalTimestamp1 {
-                        ts: Decoder::extract_timestamp(payload.to_vec(), 25),
+                        ts: Decoder::extract_timestamp(payload.clone(), 25),
                         clkch: (payload.last().unwrap() & (1 << 5)) >> 5 == 1,
                         wrap: (payload.last().unwrap() & (1 << 6)) >> 6 == 1,
                     }))
@@ -748,10 +767,8 @@ impl Decoder {
                     Ok(None)
                 }
             }
-            DecoderState::GlobalTimestamp2 { payload } => {
-                let last_byte = (b >> 7) & 1 == 0;
-                payload.push(b);
-                if last_byte {
+            PacketStub::GlobalTimestamp2 => {
+                if let Some(payload) = self.pull_payload() {
                     Ok(Some(TracePacket::GlobalTimestamp2 {
                         ts: Decoder::extract_timestamp(
                             payload.to_vec(),
@@ -770,13 +787,11 @@ impl Decoder {
                     Ok(None)
                 }
             }
-            DecoderState::Instrumentation {
+            PacketStub::Instrumentation {
                 port,
-                payload,
                 expected_size,
             } => {
-                payload.push(b);
-                if payload.len() == *expected_size {
+                if let Some(payload) = self.pull_bytes(*expected_size) {
                     Ok(Some(TracePacket::Instrumentation {
                         port: *port,
                         payload: payload.to_vec(),
@@ -786,10 +801,6 @@ impl Decoder {
                 }
             }
         };
-
-        if let Ok(Some(_)) = packet {
-            self.state = DecoderState::Header;
-        }
 
         packet
     }
@@ -928,7 +939,7 @@ impl Decoder {
 
     /// Decodes the header byte of a packet, and enters the appropriate decoder state, if able.
     #[bitmatch]
-    fn decode_header(&mut self, header: u8) -> Result<Option<TracePacket>, MalformedPacket> {
+    fn decode_header(header: u8) -> Result<HeaderVariant, MalformedPacket> {
         fn translate_ss(ss: u8) -> Option<usize> {
             // See (Appendix D4.2.8, Table D4-4)
             Some(
@@ -941,22 +952,21 @@ impl Decoder {
             )
         }
 
+        let stub = |s| Ok(HeaderVariant::Stub(s));
+        let packet = |p| Ok(HeaderVariant::Packet(p));
+
         #[bitmatch]
         match header {
             // Synchronization packet category
-            "0000_0000" => {
-                self.state = DecoderState::Syncing(8);
-            }
+            "0000_0000" => stub(PacketStub::Sync(8)),
 
             // Protocol packet category
-            "0111_0000" => {
-                return Ok(Some(TracePacket::Overflow));
-            }
+            "0111_0000" => packet(TracePacket::Overflow),
             "11rr_0000" => {
                 // Local timestamp, format 1 (LTS1)
                 let tc = r; // relationship with corresponding data
 
-                self.state = DecoderState::LocalTimestamp {
+                stub(PacketStub::LocalTimestamp {
                     data_relation: match tc {
                         0b00 => TimestampDataRelation::Sync,
                         0b01 => TimestampDataRelation::UnknownDelay,
@@ -964,38 +974,36 @@ impl Decoder {
                         0b11 => TimestampDataRelation::UnknownAssocEventDelay,
                         _ => unreachable!(),
                     },
-                    payload: vec![],
-                };
+                })
             }
             "0ttt_0000" => {
                 // Local timestamp, format 2 (LTS2)
-                return Ok(Some(TracePacket::LocalTimestamp2 { ts: t }));
+                packet(TracePacket::LocalTimestamp2 { ts: t })
             }
             "1001_0100" => {
                 // Global timestamp, format 1 (GTS1)
-                self.state = DecoderState::GlobalTimestamp1 { payload: vec![] };
+                stub(PacketStub::GlobalTimestamp1)
             }
             "1011_0100" => {
                 // Global timestamp, format 2(GTS2)
-                self.state = DecoderState::GlobalTimestamp2 { payload: vec![] };
+                stub(PacketStub::GlobalTimestamp2)
             }
             "0ppp_1000" => {
                 // Extension packet
-                return Ok(Some(TracePacket::Extension { page: p }));
+                packet(TracePacket::Extension { page: p })
             }
 
             // Source packet category
             "aaaa_a0ss" => {
                 // Instrumentation packet
-                self.state = DecoderState::Instrumentation {
+                stub(PacketStub::Instrumentation {
                     port: a,
-                    payload: vec![],
                     expected_size: if let Some(s) = translate_ss(s) {
                         s
                     } else {
                         return Err(MalformedPacket::InvalidSourcePayload { header, size: s });
                     },
-                };
+                })
             }
             "aaaa_a1ss" => {
                 // Hardware source packet
@@ -1008,26 +1016,40 @@ impl Decoder {
                     });
                 }
 
-                self.state = DecoderState::HardwareSource {
+                stub(PacketStub::HardwareSource {
                     disc_id,
-                    payload: vec![],
                     expected_size: if let Some(s) = translate_ss(s) {
                         s
                     } else {
                         return Err(MalformedPacket::InvalidSourcePayload { header, size: s });
                     },
-                };
+                })
             }
-            "hhhh_hhhh" => return Err(MalformedPacket::InvalidHeader(h)),
+            "hhhh_hhhh" => Err(MalformedPacket::InvalidHeader(h)),
         }
-
-        Ok(None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pull_bytes() {
+        let mut decoder = Decoder::new();
+        let payload = vec![0b1000_0000, 0b1010_0000, 0b1000_0100, 0b0110_0000];
+        decoder.push(&payload);
+        assert_eq!(decoder.pull_bytes(3).unwrap().len(), 3);
+    }
+
+    #[test]
+    fn pull_payload() {
+        let mut decoder = Decoder::new();
+        let payload = vec![0b1000_0000, 0b1010_0000, 0b1000_0100, 0b0110_0000];
+        #[rustfmt::skip]
+        decoder.push(&payload);
+        assert_eq!(decoder.pull_payload(), Some(payload));
+    }
 
     #[test]
     fn extract_timestamp() {
