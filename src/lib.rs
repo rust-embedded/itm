@@ -429,7 +429,7 @@ impl Default for Timestamp {
 }
 
 /// A context in which to record the current timestamp between calls to [Decoder::pull_with_timestamp].
-pub struct TimestampedContext {
+struct TimestampedContext {
     /// Data packets associated with [TimestampedContext::ts] in this structure.
     pub packets: Vec<TracePacket>,
 
@@ -459,7 +459,8 @@ impl Default for TimestampedContext {
 }
 
 pub struct DecoderOptions {
-    /// Whether to only process global timestamps in the bitstream on [Decoder::pull_with_timestamps].
+    /// Whether to only process global timestamps in the bitstream on
+    /// [Decoder::pull_with_timestamps].
     pub only_gts: bool,
 }
 
@@ -480,7 +481,8 @@ pub struct Decoder {
     /// Whether the decoder is in a state of synchronization.
     sync: Option<usize>,
 
-    /// Timestamp context. Used exclusively in [Decoder::pull_with_timestamp].
+    /// Timestamp context. Used exclusively in
+    /// [Decoder::pull_with_timestamp] for bookkeeping purposes.
     ts_ctx: TimestampedContext,
 }
 
@@ -528,7 +530,6 @@ impl Decoder {
         if self.sync.is_some() {
             return self.handle_sync();
         }
-
         assert!(self.sync.is_none());
 
         if self.incoming.len() < 8 {
@@ -536,16 +537,12 @@ impl Decoder {
             return Ok(None);
         }
 
-        let stub = match {
-            let b = self.pull_byte();
-            Self::decode_header(b)?
-        } {
+        let stub = match Self::decode_header(self.pull_byte())? {
             HeaderVariant::Packet(p) => return Ok(Some(p)),
             HeaderVariant::Stub(s) => s,
         };
 
-        // header now contains the state; handle it.
-        return self.process_stub(&stub);
+        self.process_stub(&stub)
     }
 
     /// Pull the next set of ITM data packets (not timestamps) from the
@@ -558,10 +555,10 @@ impl Decoder {
     /// bitstream.
     ///
     /// This function thus [Decoder::pull]s packets until a local
-    /// timestamp is read, and opportunely calculates an associated
-    /// [Timestamp]: local timestamps monotonically increase an internal
-    /// delta counter; upon a global timestamps the base is updated, and
-    /// the delta is reset.
+    /// timestamp is read (by default), and opportunely calculates an
+    /// associated [Timestamp]: local timestamps monotonically increase
+    /// an internal delta counter; upon a global timestamps the base is
+    /// updated, and the delta is reset.
     pub fn pull_with_timestamp(
         &mut self,
     ) -> Result<Option<TimestampedTracePackets>, MalformedPacket> {
