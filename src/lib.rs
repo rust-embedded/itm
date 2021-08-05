@@ -18,7 +18,8 @@ use std::convert::TryInto;
 #[cfg(feature = "serde")]
 use serde_crate::{Deserialize, Serialize};
 
-/// Re-exports for exception types from the `cortex-m` crate.
+/// Re-exports for exception types of the `cortex-m` crate for `serde`
+/// purposes.
 pub mod cortex_m {
     /// Denotes the exception type (interrupt event) of the processor.
     /// (Table B1-4)
