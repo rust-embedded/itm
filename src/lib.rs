@@ -537,12 +537,10 @@ impl Decoder {
             return Ok(None);
         }
 
-        let stub = match Self::decode_header(self.pull_byte())? {
-            HeaderVariant::Packet(p) => return Ok(Some(p)),
-            HeaderVariant::Stub(s) => s,
-        };
-
-        self.process_stub(&stub)
+        match Self::decode_header(self.pull_byte())? {
+            HeaderVariant::Packet(p) => Ok(Some(p)),
+            HeaderVariant::Stub(s) => self.process_stub(&s),
+        }
     }
 
     /// Pull the next set of ITM data packets (not timestamps) from the
@@ -736,8 +734,8 @@ impl Decoder {
         Some(self.pull_bytes(cnt).unwrap())
     }
 
-    fn process_stub(&mut self, state: &PacketStub) -> Result<Option<TracePacket>, MalformedPacket> {
-        let packet = match state {
+    fn process_stub(&mut self, stub: &PacketStub) -> Result<Option<TracePacket>, MalformedPacket> {
+        match stub {
             PacketStub::Sync(count) => {
                 self.sync = Some(*count);
                 self.handle_sync()
@@ -807,9 +805,7 @@ impl Decoder {
                     Ok(None)
                 }
             }
-        };
-
-        packet
+        }
     }
 
     // TODO template this for u32, u64?
