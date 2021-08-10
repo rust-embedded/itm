@@ -282,7 +282,7 @@ pub enum TimestampDataRelation {
 }
 
 /// A header or payload byte failed to be decoded.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[cfg_attr(
     feature = "serde",
     derive(Serialize, Deserialize),
@@ -290,10 +290,12 @@ pub enum TimestampDataRelation {
 )]
 pub enum MalformedPacket {
     /// Header is invalid and cannot be decoded.
+    #[error("Header is invalid and cannot be decoded: {}", format!("{:#b}", .0))]
     InvalidHeader(u8),
 
     /// The type discriminator ID in the hardware source packet header
     /// is invalid or the associated payload is of wrong size.
+    #[error("Hardware source packet type discriminator ID ({disc_id}) or payload length ({}) is invalid", .payload.len())]
     InvalidHardwarePacket {
         /// The discriminator ID. Potentially invalid.
         disc_id: u8,
@@ -304,6 +306,7 @@ pub enum MalformedPacket {
 
     /// The type discriminator ID in the hardware source packet header
     /// is invalid.
+    #[error("Hardware source packet discriminator ID is invalid: {disc_id}")]
     InvalidHardwareDisc {
         /// The discriminator ID. Potentially invalid.
         disc_id: u8,
@@ -314,6 +317,7 @@ pub enum MalformedPacket {
 
     /// An exception trace packet refers to an invalid action or an
     /// invalid exception number.
+    #[error("IRQ number {exception} and/or action {function} is invalid")]
     InvalidExceptionTrace {
         /// The exception number.
         exception: u16,
@@ -324,6 +328,7 @@ pub enum MalformedPacket {
     },
 
     /// The payload length of a PCSample packet is invalid.
+    #[error("Payload length of PC sample is invalid: {}", .payload.len())]
     InvalidPCSampleSize {
         /// The payload constituting the PC value, of invalid size. MSB, BE.
         payload: Vec<u8>,
@@ -331,6 +336,7 @@ pub enum MalformedPacket {
 
     /// The GlobalTimestamp2 packet does not contain a 48-bit or 64-bit
     /// timestamp.
+    #[error("GlobalTimestamp2 packet does not contain a 48-bit or 64-bit timestamp")]
     InvalidGTS2Size {
         /// The payload constituting the timestamp, of invalid size. MSB, BE.
         payload: Vec<u8>,
@@ -338,10 +344,17 @@ pub enum MalformedPacket {
 
     /// The number of zeroes in the Synchronization packet is less than
     /// 47.
+    #[error(
+        "The number of zeroes in the Synchronization packet is less than expected: {0} < {}",
+        SYNC_MIN_ZEROS
+    )]
     InvalidSync(usize),
 
     /// A source packet (from software or hardware) contains an invalid
     /// expected payload size.
+    #[error(
+        "A source packet (from software or hardware) contains an invalid expected payload size"
+    )]
     InvalidSourcePayload {
         /// The header which contains the invalid payload size.
         header: u8,
@@ -350,6 +363,8 @@ pub enum MalformedPacket {
         size: u8,
     },
 }
+
+const SYNC_MIN_ZEROS: usize = 47;
 
 /// The decoder's possible states. The default decoder state is `Header`
 /// and will always return there after a maximum of two steps. (E.g. if
@@ -403,6 +418,8 @@ pub struct Timestamp {
     /// least one LTS1/LTS2 where received; or, if global timestamps are
     /// enabled, if at least one LTS1/LTS2 where received since the last
     /// global timestamp.
+    ///
+    /// Will be `None` if [DecoderOptions::only_gts] is set.
     pub delta: Option<usize>,
 
     /// In what manner this timestamp relate to the associated data
@@ -666,14 +683,12 @@ impl Decoder {
     /// realigns the incoming bitstream for further processing, which
     /// may not be 8-bit aligned.
     fn handle_sync(&mut self) -> Result<Option<TracePacket>, MalformedPacket> {
-        const MIN_ZEROS: usize = 47;
-
         if let Some(mut count) = self.sync {
             while let Some(bit) = self.incoming.pop() {
-                if !bit && count < MIN_ZEROS {
+                if !bit && count < SYNC_MIN_ZEROS {
                     count += 1;
                     continue;
-                } else if bit && count >= MIN_ZEROS {
+                } else if bit && count >= SYNC_MIN_ZEROS {
                     self.sync = None;
                     return Ok(Some(TracePacket::Sync));
                 } else {

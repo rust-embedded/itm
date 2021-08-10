@@ -15,6 +15,7 @@ homepage = "https://github.com/rtic-scope/itm-decode"
 bitmatch = "0.1.1"
 bitvec = "0.22"
 cortex-m = { version = "0.6", default-features = false }
+thiserror = "1"
 
 # only required by itm-decode executable
 anyhow = { version = "1.0", optional = true }
