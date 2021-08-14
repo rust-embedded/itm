@@ -451,6 +451,9 @@ struct TimestampedContext {
     /// Data packets associated with [TimestampedContext::ts] in this structure.
     pub packets: Vec<TracePacket>,
 
+    /// Malformed packets associated with [TimestampedContext::ts] in this structure.
+    pub malformed_packets: Vec<MalformedPacket>,
+
     /// The potentially received [TracePacket::GlobalTimestamp1] packet.
     /// Used in combination with [TimestampedContext::gts2] to update
     /// [Timestamp::base].
@@ -469,6 +472,7 @@ impl Default for TimestampedContext {
     fn default() -> Self {
         TimestampedContext {
             packets: vec![],
+            malformed_packets: vec![],
             gts1: None,
             gts2: None,
             ts: Timestamp::default(),
@@ -515,6 +519,7 @@ pub struct TimestampedTracePackets {
     ///  Timestamp of [packets].
     pub timestamp: Timestamp,
     pub packets: Vec<TracePacket>,
+    pub malformed_packets: Vec<MalformedPacket>,
 }
 
 enum HeaderVariant {
@@ -575,33 +580,32 @@ impl Decoder {
     /// associated [Timestamp]: local timestamps monotonically increase
     /// an internal delta counter; upon a global timestamps the base is
     /// updated, and the delta is reset.
-    pub fn pull_with_timestamp(
-        &mut self,
-    ) -> Result<Option<TimestampedTracePackets>, MalformedPacket> {
+    pub fn pull_with_timestamp(&mut self) -> Option<TimestampedTracePackets> {
         // Common functionality for LTS{1,2}
         fn assoc_packets_with_lts(
             packets: Vec<TracePacket>,
+            malformed_packets: Vec<MalformedPacket>,
             ts: &mut Timestamp,
             lts: usize,
             data_relation: TimestampDataRelation,
-        ) -> Result<Option<TimestampedTracePackets>, MalformedPacket> {
+        ) -> TimestampedTracePackets {
             if let Some(ref mut delta) = ts.delta {
                 *delta += lts as usize;
             } else {
                 ts.delta = Some(lts);
             }
             ts.data_relation = Some(data_relation);
-            Ok(Some(TimestampedTracePackets {
+            TimestampedTracePackets {
                 timestamp: ts.clone(),
                 packets,
-            }))
+                malformed_packets,
+            }
         }
 
         loop {
             match self.pull() {
-                // No packets remaining or an error, just propagate.
-                Ok(None) => return Ok(None),
-                Err(e) => return Err(e),
+                // No packets remaining
+                Ok(None) => return None,
 
                 // A local timestamp: packets received after the last
                 // local timestamp (all self.ts_ctx.packets) relate to
@@ -610,20 +614,22 @@ impl Decoder {
                 Ok(Some(TracePacket::LocalTimestamp1 { ts, data_relation }))
                     if !self.options.only_gts =>
                 {
-                    return assoc_packets_with_lts(
+                    return Some(assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
+                        self.ts_ctx.malformed_packets.drain(..).collect(),
                         &mut self.ts_ctx.ts,
                         ts as usize,
                         data_relation,
-                    );
+                    ));
                 }
                 Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.options.only_gts => {
-                    return assoc_packets_with_lts(
+                    return Some(assoc_packets_with_lts(
                         self.ts_ctx.packets.drain(..).collect(),
+                        self.ts_ctx.malformed_packets.drain(..).collect(),
                         &mut self.ts_ctx.ts,
                         ts as usize,
                         TimestampDataRelation::Sync,
-                    );
+                    ));
                 }
 
                 // A global timestamp: store until we have both the
@@ -657,12 +663,15 @@ impl Decoder {
                 // it until the next local timestamp.
                 Ok(Some(packet)) if !self.options.only_gts => self.ts_ctx.packets.push(packet),
 
+                Err(malformed) => self.ts_ctx.malformed_packets.push(malformed),
+
                 // As above, but with local timestamps considered data: return the packet directly.
                 Ok(Some(packet)) if self.options.only_gts => {
-                    return Ok(Some(TimestampedTracePackets {
+                    return Some(TimestampedTracePackets {
                         timestamp: self.ts_ctx.ts.clone(),
                         packets: vec![packet],
-                    }));
+                        malformed_packets: vec![],
+                    });
                 }
                 _ => unreachable!(),
             }
