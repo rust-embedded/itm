@@ -567,6 +567,7 @@ impl Decoder {
             return Ok(None);
         }
 
+        self.ts_ctx.packets_consumed = self.ts_ctx.packets_consumed + 1;
         match Self::decode_header(self.pull_byte())? {
             HeaderVariant::Packet(p) => Ok(Some(p)),
             HeaderVariant::Stub(s) => self.process_stub(&s),
@@ -614,7 +615,6 @@ impl Decoder {
         }
 
         loop {
-            self.ts_ctx.packets_consumed = self.ts_ctx.packets_consumed + 1;
             match self.pull() {
                 // No packets remaining
                 Ok(None) => return None,
