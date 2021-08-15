@@ -403,6 +403,7 @@ fn pull_with_timestamp() {
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: false,
             },
+            packets_consumed: 6,
         }),
         Some(TimestampedTracePackets {
             packets: [TracePacket::PCSample { pc: None }].into(),
@@ -413,6 +414,7 @@ fn pull_with_timestamp() {
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: false,
             },
+            packets_consumed: 2,
         }),
         Some(TimestampedTracePackets {
             packets: [TracePacket::Overflow].into(),
@@ -423,6 +425,7 @@ fn pull_with_timestamp() {
                 data_relation: Some(TimestampDataRelation::Sync),
                 diverged: true,
             },
+            packets_consumed: 2,
         }),
         Some(TimestampedTracePackets {
             packets: [].into(),
@@ -433,6 +436,7 @@ fn pull_with_timestamp() {
                 data_relation: Some(TimestampDataRelation::UnknownAssocEventDelay),
                 diverged: false,
             },
+            packets_consumed: 3,
         }),
         None,
     ]
@@ -502,6 +506,7 @@ fn pull_with_timestamp_malformed() {
             data_relation: Some(TimestampDataRelation::Sync),
             diverged: false,
         },
+        packets_consumed: 7,
     })]
     .iter()
     {
@@ -560,6 +565,7 @@ fn pull_with_timestamp_gts_only() {
                 data_relation: None,
                 diverged: false,
             },
+            packets_consumed: 1,
         }),
         Some(TimestampedTracePackets {
             packets: [TracePacket::PCSample { pc: None }].into(),
@@ -570,6 +576,7 @@ fn pull_with_timestamp_gts_only() {
                 data_relation: None,
                 diverged: false,
             },
+            packets_consumed: 1,
         }),
         Some(TimestampedTracePackets {
             packets: [TracePacket::LocalTimestamp1 {
@@ -584,6 +591,7 @@ fn pull_with_timestamp_gts_only() {
                 data_relation: None,
                 diverged: false,
             },
+            packets_consumed: 1,
         }),
         None,
     ]

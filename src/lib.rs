@@ -466,6 +466,9 @@ struct TimestampedContext {
 
     /// The current timestamp.
     pub ts: Timestamp,
+
+    /// Number of ITM packets consumed thus far.
+    pub packets_consumed: usize,
 }
 
 impl Default for TimestampedContext {
@@ -476,6 +479,7 @@ impl Default for TimestampedContext {
             gts1: None,
             gts2: None,
             ts: Timestamp::default(),
+            packets_consumed: 0,
         }
     }
 }
@@ -516,10 +520,13 @@ pub struct Decoder {
     serde(crate = "serde_crate")
 )]
 pub struct TimestampedTracePackets {
-    ///  Timestamp of [packets].
+    ///  Timestamp of [packets] and [malformed_packets].
     pub timestamp: Timestamp,
     pub packets: Vec<TracePacket>,
     pub malformed_packets: Vec<MalformedPacket>,
+
+    /// Number of ITM packets consumed to create this structure.
+    pub packets_consumed: usize,
 }
 
 enum HeaderVariant {
@@ -588,6 +595,7 @@ impl Decoder {
             ts: &mut Timestamp,
             lts: usize,
             data_relation: TimestampDataRelation,
+            packets_consumed: &mut usize,
         ) -> TimestampedTracePackets {
             if let Some(ref mut delta) = ts.delta {
                 *delta += lts as usize;
@@ -595,14 +603,18 @@ impl Decoder {
                 ts.delta = Some(lts);
             }
             ts.data_relation = Some(data_relation);
-            TimestampedTracePackets {
+            let ttp = TimestampedTracePackets {
                 timestamp: ts.clone(),
                 packets,
                 malformed_packets,
-            }
+                packets_consumed: *packets_consumed,
+            };
+            *packets_consumed = 0;
+            ttp
         }
 
         loop {
+            self.ts_ctx.packets_consumed = self.ts_ctx.packets_consumed + 1;
             match self.pull() {
                 // No packets remaining
                 Ok(None) => return None,
@@ -620,6 +632,7 @@ impl Decoder {
                         &mut self.ts_ctx.ts,
                         ts as usize,
                         data_relation,
+                        &mut self.ts_ctx.packets_consumed,
                     ));
                 }
                 Ok(Some(TracePacket::LocalTimestamp2 { ts })) if !self.options.only_gts => {
@@ -629,6 +642,7 @@ impl Decoder {
                         &mut self.ts_ctx.ts,
                         ts as usize,
                         TimestampDataRelation::Sync,
+                        &mut self.ts_ctx.packets_consumed,
                     ));
                 }
 
@@ -671,6 +685,7 @@ impl Decoder {
                         timestamp: self.ts_ctx.ts.clone(),
                         packets: vec![packet],
                         malformed_packets: vec![],
+                        packets_consumed: 1,
                     });
                 }
                 _ => unreachable!(),
