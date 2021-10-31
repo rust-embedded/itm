@@ -54,10 +54,10 @@ fn main() -> Result<()> {
     loop {
         match decoder.pull() {
             Ok(None) => {
-                let mut buf = [0 as u8; 8];
+                let mut buf = [0_u8; 8];
                 if file
                     .read(&mut buf)
-                    .with_context(|| format!("Unable to read input"))?
+                    .with_context(|| "Unable to read input".to_string())?
                     == 0
                 {
                     break; // EOF
@@ -67,9 +67,7 @@ fn main() -> Result<()> {
             Ok(Some(TracePacket::Instrumentation { port, payload })) if opt.instr_as_string => {
                 let stim = stim.as_mut().unwrap();
                 // lossily convert payload to UTF-8 string
-                if !stim.contains_key(&port) {
-                    stim.insert(port, String::new());
-                }
+                stim.entry(port).or_insert_with(String::new);
                 let string = stim.get_mut(&port).unwrap();
                 string.push_str(&String::from_utf8_lossy(&payload));
 

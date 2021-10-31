@@ -567,7 +567,7 @@ impl Decoder {
             return Ok(None);
         }
 
-        self.ts_ctx.packets_consumed = self.ts_ctx.packets_consumed + 1;
+        self.ts_ctx.packets_consumed += 1;
         match Self::decode_header(self.pull_byte())? {
             HeaderVariant::Packet(p) => Ok(Some(p)),
             HeaderVariant::Stub(s) => self.process_stub(&s),
@@ -756,7 +756,7 @@ impl Decoder {
         let mut iter = self.incoming.rchunks(8);
         let mut cnt = 0;
         loop {
-            cnt = cnt + 1;
+            cnt += 1;
             match iter.next() {
                 None => return None,
                 Some(b) if b.len() < 8 => return None,
@@ -786,7 +786,7 @@ impl Decoder {
                 expected_size,
             } => {
                 if let Some(payload) = self.pull_bytes(*expected_size) {
-                    Self::handle_hardware_source(*disc_id, payload).map(|p| Some(p))
+                    Self::handle_hardware_source(*disc_id, payload).map(Some)
                 } else {
                     Ok(None)
                 }
@@ -907,7 +907,7 @@ impl Decoder {
                     });
                 };
 
-                return Ok(TracePacket::ExceptionTrace {
+                Ok(TracePacket::ExceptionTrace {
                     exception: if let Some(exception) = cortex_m::VectActive::from(exception_number)
                     {
                         exception
@@ -928,7 +928,7 @@ impl Decoder {
                             })
                         }
                     },
-                });
+                })
             }
             2 => {
                 // PC sample
@@ -981,6 +981,7 @@ impl Decoder {
     }
 
     /// Decodes the first byte of a packet, the header, into a complete packet or a packet stub.
+    #[allow(clippy::bad_bit_mask)]
     #[bitmatch]
     fn decode_header(header: u8) -> Result<HeaderVariant, MalformedPacket> {
         fn translate_ss(ss: u8) -> Option<usize> {
