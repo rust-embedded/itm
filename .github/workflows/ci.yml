@@ -1,4 +1,4 @@
-name: Build
+name: CI
 on:
   pull_request:
   push:
@@ -53,7 +53,7 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: cargo test
+      - name: cargo test --all
         uses: actions-rs/cargo@v1
         with:
           command: test
