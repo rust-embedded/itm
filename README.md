@@ -3,11 +3,11 @@
 
 # `itm`
 
-> A Rust crate and tool `itmdump` to parse and dump ARM [ITM] packets.
+> A Rust crate and tool `itm-decode` to parse and dump ARM [ITM] packets.
 
 This project is developed and maintained by the [Cortex-M team][team].
 
-[ITM]: http://infocenter.arm.com/help/topic/com.arm.doc.ddi0314h/Chdbicbg.html
+[ITM]: https://developer.arm.com/documentation/ddi0403/ed/, Appendix D4
 
 ## [Documentation](https://docs.rs/crate/itm)
 
@@ -15,10 +15,10 @@ This project is developed and maintained by the [Cortex-M team][team].
 
 ```shell
 # Install `itmdump` tool
-$ cargo install itm
+$ cargo install itm-decode
 
 # Check installation
-$ itmdump --version
+$ itm-decode --version
 ```
 
 ## Minimum Supported Rust Version (MSRV)
