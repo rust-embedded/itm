@@ -750,14 +750,15 @@ fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, 
                 return Err(MalformedPacket::InvalidHardwarePacket { disc_id, payload });
             }
 
-            let b = payload[0];
+            #[bitmatch]
+            let "??yf_lsec" = payload[0];
             Ok(TracePacket::EventCounterWrap {
-                cyc: b & (1 << 5) != 0,
-                fold: b & (1 << 4) != 0,
-                lsu: b & (1 << 3) != 0,
-                sleep: b & (1 << 2) != 0,
-                exc: b & (1 << 1) != 0,
-                cpi: b & (1 << 0) != 0,
+                cyc: y != 0,
+                fold: f != 0,
+                lsu: l != 0,
+                sleep: s != 0,
+                exc: e != 0,
+                cpi: c != 0,
             })
         }
         1 => {
@@ -767,14 +768,15 @@ fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, 
                 return Err(MalformedPacket::InvalidHardwarePacket { disc_id, payload });
             }
 
-            let function = (payload[1] >> 4) & 0b11;
-            let exception_number = ((payload[1] as u16 & 1) << 8) | payload[0] as u16;
+            #[bitmatch]
+            let "??ff_???e" = payload[1];
+            let exception_number = ((e as u16) << 8) | payload[0] as u16;
             let exception_number: u8 = if let Ok(nr) = exception_number.try_into() {
                 nr
             } else {
                 return Err(MalformedPacket::InvalidExceptionTrace {
                     exception: exception_number,
-                    function,
+                    function: f,
                 });
             };
 
@@ -784,17 +786,17 @@ fn handle_hardware_source(disc_id: u8, payload: Vec<u8>) -> Result<TracePacket, 
                 } else {
                     return Err(MalformedPacket::InvalidExceptionTrace {
                         exception: exception_number.into(),
-                        function,
+                        function: f,
                     });
                 },
-                action: match function {
+                action: match f {
                     0b01 => ExceptionAction::Entered,
                     0b10 => ExceptionAction::Exited,
                     0b11 => ExceptionAction::Returned,
                     _ => {
                         return Err(MalformedPacket::InvalidExceptionTrace {
                             exception: exception_number.into(),
-                            function,
+                            function: f,
                         })
                     }
                 },
