@@ -101,14 +101,16 @@ where
     decoder: &'a mut Decoder<R>,
     options: TimestampsConfiguration,
     current_baseline: DateTime,
+    gts: Gts,
 }
 
+#[cfg_attr(test, derive(Clone, Debug))]
 struct Gts {
     pub lower: Option<u64>,
     pub upper: Option<u64>,
 }
 impl Gts {
-    const GTS2_SHIFT: usize = 26; // see (Appendix D4.2.5).
+    const GTS2_SHIFT: u32 = 26; // see (Appendix D4.2.5).
 
     pub fn replace_lower(&mut self, new: u64) {
         self.lower = match self.lower {
@@ -127,7 +129,12 @@ impl Gts {
 
     pub fn merge(&self) -> Option<u64> {
         if let (Some(lower), Some(upper)) = (self.lower, self.upper) {
-            Some((upper << Self::GTS2_SHIFT) | lower)
+            Some(
+                upper
+                    .checked_shl(Self::GTS2_SHIFT)
+                    .expect("GTS merge overflow")
+                    | lower,
+            )
         } else {
             None
         }
@@ -148,6 +155,7 @@ impl Gts {
     }
 
     #[cfg(test)]
+    #[allow(dead_code)]
     pub fn from_one(gts: TracePacket) -> Self {
         match gts {
             TracePacket::GlobalTimestamp1 { ts: lower, .. } => Self {
@@ -176,6 +184,10 @@ where
             current_baseline: options.baseline,
             decoder,
             options,
+            gts: Gts {
+                lower: None,
+                upper: None,
+            },
         }
     }
 
@@ -188,10 +200,6 @@ where
         let mut packets: Vec<TracePacket> = vec![];
         let mut malformed_packets: Vec<MalformedPacket> = vec![];
         let mut consumed_packets: usize = 0;
-        let mut gts = Gts {
-            lower: None,
-            upper: None,
-        };
 
         fn apply_lts(
             lts: u64,
@@ -259,15 +267,12 @@ where
                     // A global timestamp: store until we have both the
                     // upper (GTS2) and lower (GTS1) bits.
                     TracePacket::GlobalTimestamp1 { ts, wrap, clkch } => {
-                        gts.replace_lower(ts);
+                        self.gts.replace_lower(ts);
 
                         if wrap {
                             // upper bits have changed; GTS2 incoming
-                            gts.upper = None;
-                        } else {
-                            apply_gts(&gts, &mut self.current_baseline, &options);
-                        }
-                        if clkch {
+                            self.gts.upper = None;
+                        } else if clkch {
                             // system has asserted clock change input; full GTS incoming
                             //
                             // A clock change signal that the system
@@ -277,12 +282,14 @@ where
                             // frequency. Implementation and use of the
                             // clock change signal is optional and
                             // deprecated.
-                            gts.reset();
+                            self.gts.reset();
+                        } else {
+                            apply_gts(&self.gts, &mut self.current_baseline, &options);
                         }
                     }
                     TracePacket::GlobalTimestamp2 { ts } => {
-                        gts.upper = Some(ts);
-                        apply_gts(&gts, &mut self.current_baseline, &options);
+                        self.gts.upper = Some(ts);
+                        apply_gts(&self.gts, &mut self.current_baseline, &options);
                     }
 
                     packet => packets.push(packet),
@@ -319,7 +326,7 @@ fn calc_offset(ts: u64, prescaler: Option<LocalTimestampOptions>, freq: u32) -> 
         Some(LocalTimestampOptions::Disabled) => unreachable!(), // checked in `Timestamps::new`
     };
     let ticks = ts * prescale;
-    let seconds = (1_f64 / freq as f64) * ticks as f64;
+    let seconds = ticks as f64 / freq as f64;
 
     chrono::Duration::nanoseconds((seconds * 1e9).ceil() as i64)
 }
@@ -330,6 +337,15 @@ mod timestamp_utils {
 
     #[test]
     fn gts() {
+        let mut gts = Gts {
+            lower: Some(1), // bit 1
+            upper: Some(1), // bit 26
+        };
+        assert_eq!(gts.merge(), Some(67108865));
+
+        gts.replace_lower(127);
+        assert_eq!(gts.merge(), Some(67108991));
+
         let gts = Gts {
             lower: None,
             upper: None,
@@ -378,7 +394,7 @@ mod timestamp_utils {
 mod timestamps {
     use super::{calc_offset, Gts};
     use crate::*;
-    use std::ops::{Add, Sub};
+    use std::ops::Add;
 
     const FREQ: u32 = 16_000_000;
     static mut BASELINE: Option<chrono::DateTime<chrono::Utc>> = None;
@@ -395,15 +411,13 @@ mod timestamps {
                     data_relation,
                 },
                 Some(gts),
-            ) => {
-                (
-                    true,
-                    calc_offset(gts.merge().unwrap() + (lts as u64), None, FREQ)
-                        // XXX why are we 1ns off?
-                        .sub(chrono::Duration::nanoseconds(1)),
-                    data_relation,
-                )
-            }
+            ) => (
+                true,
+                calc_offset(gts.merge().unwrap(), None, FREQ)
+                    .checked_add(&calc_offset(lts.into(), None, FREQ))
+                    .unwrap(),
+                data_relation,
+            ),
             (TracePacket::LocalTimestamp1 { ts, data_relation }, None) => {
                 (false, calc_offset(ts.into(), None, FREQ), data_relation)
             }
@@ -413,8 +427,8 @@ mod timestamps {
                 TimestampDataRelation::Sync,
             ),
             (TracePacket::LocalTimestamp2 { ts }, Some(gts)) => (
-                false,
-                calc_offset(gts.merge().unwrap_or(0) + (ts as u64), None, FREQ),
+                true,
+                calc_offset(gts.merge().unwrap() + (ts as u64), None, FREQ),
                 TimestampDataRelation::Sync,
             ),
             _ => panic!("???"),
@@ -434,8 +448,26 @@ mod timestamps {
         }
     }
 
+    fn is_sorted_increasing(timestamps: &[Timestamp]) -> bool {
+        let mut it = timestamps.iter();
+        let mut prev = None;
+        while let Some(curr) = it.next() {
+            if prev.is_none() {
+                continue;
+            }
+
+            if curr < prev.unwrap() {
+                return false;
+            }
+
+            prev = Some(curr);
+        }
+
+        true
+    }
+
     #[test]
-    fn test1() {
+    fn check_timestamps() {
         unsafe {
             BASELINE = Some(chrono::DateTime::<chrono::Utc>::from_utc(
                 chrono::NaiveDateTime::from_timestamp(0, 0),
@@ -556,25 +588,7 @@ mod timestamps {
             ]
         };
 
-        // ensure timestamps are in increasing order
-        // TODO(unstable) replace with slice::is_sorted
-        assert!(|| -> bool {
-            let mut it = timestamps.iter();
-            let mut prev = None;
-            while let Some(curr) = it.next() {
-                if prev.is_none() {
-                    continue;
-                }
-
-                if curr < prev.unwrap() {
-                    return false;
-                }
-
-                prev = Some(curr);
-            }
-
-            true
-        }());
+        assert!(is_sorted_increasing(&timestamps));
 
         let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
         let mut it = decoder.timestamps(TimestampsConfiguration {
@@ -627,64 +641,147 @@ mod timestamps {
         }
     }
 
-    // #[test]
-    // fn test2() {
-    //     unsafe {
-    //         BASELINE = Some(chrono::DateTime::<chrono::Utc>::from_utc(
-    //             chrono::NaiveDateTime::from_timestamp(0, 0),
-    //             chrono::Utc,
-    //         ));
-    //     }
+    #[test]
+    fn gts_compression() {
+        unsafe {
+            BASELINE = Some(chrono::DateTime::<chrono::Utc>::from_utc(
+                chrono::NaiveDateTime::from_timestamp(0, 0),
+                chrono::Utc,
+            ));
+        }
 
-    //     #[rustfmt::skip]
-    //     let stream: &[u8] = &[
-    //         // GTS1
-    //         0b1001_0100,
-    //         0b1000_0000,
-    //         0b1010_0000,
-    //         0b1000_0100,
-    //         0b0000_0000,
+        #[rustfmt::skip]
+        let stream: &[u8] = &[
+            // LTS2
+            0b0110_0000,
 
-    //         // GTS2 (64-bit)
-    //         0b1011_0100,
-    //         0b1011_1101,
-    //         0b1111_0100,
-    //         0b1001_0001,
-    //         0b1000_0001,
-    //         0b1000_0001,
-    //         0b0000_0001,
+            // GTS1 (bit 1 set)
+            0b1001_0100,
+            0b1000_0001,
+            0b1000_0000,
+            0b1000_0000,
+            0b0000_0000,
 
-    //         // LTS2
-    //         0b0110_0000,
+            // GTS2 (64-bit, bit 26 set)
+            0b1011_0100,
+            0b1000_0001,
+            0b1000_0000,
+            0b1000_0000,
+            0b1000_0000,
+            0b1000_0000,
+            0b0000_0000,
 
-    //         // GTS1 (compressed)
-    //         0b1001_0100,
-    //         0b0111_1111,
+            // LTS2
+            0b0110_0000,
 
-    //         // LTS2
-    //         0b0110_0000,
-    //     ];
+            // GTS1 (compressed)
+            0b1001_0100,
+            0b1111_1111,
+            0b0000_0000,
 
-    //     let timestamps = {
-    //         let mut offset_sum = chrono::Duration::nanoseconds(0);
-    //         let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
-    //         let mut it = decoder.singles();
-    //         let mut gts = None;
-    //         [
-    //             {
-    //                 let gts1 = it.nth(0).unwrap().unwrap();
-    //                 let gts2 = it.nth(0).unwrap().unwrap();
-    //                 let lts2 = it.nth(0).unwrap().unwrap();
-    //                 gts = Gts::from_two(gts1, gts2);
+            // LTS2
+            0b0110_0000,
+        ];
 
-    //                 outer_calc_offset(lts2, Some(Gts::from_two(gts1, gts2)), &mut offset_sum)
-    //             },
-    //             {
-    //                 let gts1 = it.nth(0).unwrap().unwrap();
-    //                 let lts2 = it.nth(0).unwrap().unwrap();
-    //                 outer_calc_offset(lts2, Some(Gts::from_one(gts1)), &mut offset_sum)
-    //             },
-    //         ]
-    //     };
-    // }
+        let timestamps = {
+            let mut offset_sum = chrono::Duration::nanoseconds(0);
+            let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+            let mut it = decoder.singles();
+            #[allow(unused_assignments)]
+            let mut gts: Option<Gts> = None;
+            [
+                (
+                    {
+                        let lts2 = it.nth(0).unwrap().unwrap();
+
+                        outer_calc_offset(lts2, None, &mut offset_sum)
+                    },
+                    chrono::Duration::nanoseconds(375),
+                ),
+                (
+                    {
+                        let gts1 = it.nth(0).unwrap().unwrap();
+                        let gts2 = it.nth(0).unwrap().unwrap();
+                        let lts2 = it.nth(0).unwrap().unwrap();
+                        gts = Some(Gts::from_two(gts1, gts2).to_owned());
+
+                        outer_calc_offset(lts2, gts.clone(), &mut offset_sum)
+                    },
+                    chrono::Duration::nanoseconds(4194304438),
+                ),
+                (
+                    {
+                        if let TracePacket::GlobalTimestamp1 { ts, .. } =
+                            it.nth(0).unwrap().unwrap()
+                        {
+                            gts.as_mut().unwrap().replace_lower(ts);
+                            gts.as_ref().unwrap().merge();
+                        } else {
+                            unreachable!();
+                        }
+                        let lts2 = it.nth(0).unwrap().unwrap();
+
+                        outer_calc_offset(lts2, gts, &mut offset_sum)
+                    },
+                    chrono::Duration::nanoseconds(4194312313),
+                ),
+            ]
+        };
+
+        assert!(is_sorted_increasing(
+            &timestamps
+                .iter()
+                .map(|(ts, _since)| ts.clone())
+                .collect::<Vec<Timestamp>>()
+        ));
+
+        for (ts, since) in timestamps.iter() {
+            assert_eq!(
+                unsafe { BASELINE.unwrap() }
+                    .checked_add_signed(since.clone())
+                    .unwrap(),
+                ts.ts
+            );
+        }
+
+        let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+        let mut it = decoder.timestamps(TimestampsConfiguration {
+            clock_frequency: FREQ,
+            lts_prescaler: LocalTimestampOptions::Enabled,
+            baseline: unsafe { BASELINE.unwrap() },
+            expect_malformed: false,
+        });
+
+        for (i, set) in [
+            TimestampedTracePackets {
+                packets: [].into(),
+                malformed_packets: [].into(),
+                timestamp: timestamps[0].0.clone(),
+                consumed_packets: 1,
+            },
+            TimestampedTracePackets {
+                packets: [].into(),
+                malformed_packets: [].into(),
+                timestamp: timestamps[1].0.clone(),
+                consumed_packets: 3,
+            },
+            TimestampedTracePackets {
+                packets: [].into(),
+                malformed_packets: [].into(),
+                timestamp: timestamps[2].0.clone(),
+                consumed_packets: 2,
+            },
+        ]
+        .iter()
+        .enumerate()
+        {
+            let ttp = it.next().unwrap().unwrap();
+            let since = ttp
+                .timestamp
+                .ts
+                .signed_duration_since(unsafe { BASELINE.unwrap() });
+            assert_eq!(dbg!(since), dbg!(timestamps[i].1));
+            assert_eq!(ttp, *set);
+        }
+    }
 }
