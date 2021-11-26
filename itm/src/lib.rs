@@ -351,12 +351,6 @@ pub struct DecoderOptions {
     pub ignore_eof: bool,
 }
 
-impl Default for DecoderOptions {
-    fn default() -> Self {
-        Self { ignore_eof: true }
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 enum DecoderErrorInt {
     #[error("Buffer failed to read from source: {0}")]
@@ -863,7 +857,7 @@ mod decoder_buffer_utils {
     #[test]
     fn buffer_pop_bytes() {
         let bytes: &[u8] = &[0b1000_0000, 0b1010_0000, 0b1000_0100, 0b0110_0000];
-        let mut decoder = Decoder::new(bytes, DecoderOptions::default());
+        let mut decoder = Decoder::new(bytes, DecoderOptions { ignore_eof: false });
 
         assert_eq!(decoder.buffer.pop_bytes(3).unwrap().len(), 3);
     }
@@ -877,13 +871,7 @@ mod decoder_buffer_utils {
             0b1000_0100,
             0b0110_0000
         ];
-        let mut decoder = Decoder::new(
-            payload,
-            DecoderOptions {
-                ignore_eof: false,
-                ..DecoderOptions::default()
-            },
-        );
+        let mut decoder = Decoder::new(payload, DecoderOptions { ignore_eof: false });
 
         assert_eq!(decoder.buffer.pop_payload().unwrap(), payload);
     }

@@ -3,13 +3,7 @@ use itm::*;
 #[test]
 fn eof() {
     let empty: &[u8] = &[];
-    let mut decoder = Decoder::new(
-        empty,
-        DecoderOptions {
-            ignore_eof: false,
-            ..DecoderOptions::default()
-        },
-    );
+    let mut decoder = Decoder::new(empty, DecoderOptions { ignore_eof: false });
 
     assert!(decoder.singles().next().is_none());
 }
@@ -19,7 +13,7 @@ fn decode_sync_packet() {
     let mut trace_data: Vec<u8> = [0; 47 / 8].to_vec();
     trace_data.push(1 << 7);
 
-    let mut decoder = Decoder::new(trace_data.as_slice(), DecoderOptions::default());
+    let mut decoder = Decoder::new(trace_data.as_slice(), DecoderOptions { ignore_eof: false });
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
         TracePacket::Sync
@@ -29,7 +23,7 @@ fn decode_sync_packet() {
 #[test]
 fn decode_overflow_packet() {
     let overflow: &[u8] = &[0b0111_0000];
-    let mut decoder = Decoder::new(overflow, DecoderOptions::default());
+    let mut decoder = Decoder::new(overflow, DecoderOptions { ignore_eof: false });
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
         TracePacket::Overflow
@@ -46,7 +40,7 @@ fn decode_local_timestamp_packets() {
         // LTS2
         0b0101_0000,
     ];
-    let mut decoder = Decoder::new(lts, DecoderOptions::default());
+    let mut decoder = Decoder::new(lts, DecoderOptions { ignore_eof: false });
 
     for packet in [
         TracePacket::LocalTimestamp1 {
@@ -86,7 +80,7 @@ fn decode_global_timestamp_packets() {
         0b1111_0100,
         0b0000_0111,
     ];
-    let mut decoder = Decoder::new(gts, DecoderOptions::default());
+    let mut decoder = Decoder::new(gts, DecoderOptions { ignore_eof: false });
 
     for packet in [
         TracePacket::GlobalTimestamp1 {
@@ -111,7 +105,7 @@ fn decode_global_timestamp_packets() {
 #[test]
 fn decode_extention_packet() {
     let ext: &[u8] = &[0b0111_1000];
-    let mut decoder = Decoder::new(ext, DecoderOptions::default());
+    let mut decoder = Decoder::new(ext, DecoderOptions { ignore_eof: false });
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
         TracePacket::Extension { page: 0b111 }
@@ -127,7 +121,7 @@ fn decode_instrumentation_packet() {
         0b0011_1111,
         0b1111_1111,
     ];
-    let mut decoder = Decoder::new(instr, DecoderOptions::default());
+    let mut decoder = Decoder::new(instr, DecoderOptions { ignore_eof: false });
 
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
@@ -151,7 +145,7 @@ fn decode_eventcounterwrap_packet() {
             0b0000_0101,
             0b0010_1010
         ];
-    let mut decoder = Decoder::new(event, DecoderOptions::default());
+    let mut decoder = Decoder::new(event, DecoderOptions { ignore_eof: false });
 
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
@@ -174,7 +168,7 @@ fn decode_exceptiontrace_packet() {
             0b0010_0000,
             0b0011_0000
         ];
-    let mut decoder = Decoder::new(excpt, DecoderOptions::default());
+    let mut decoder = Decoder::new(excpt, DecoderOptions { ignore_eof: false });
 
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
@@ -198,7 +192,7 @@ fn decode_pcsample_packet() {
         0b0001_0101,
         0b0000_0000,
     ];
-    let mut decoder = Decoder::new(samples, DecoderOptions::default());
+    let mut decoder = Decoder::new(samples, DecoderOptions { ignore_eof: false });
 
     for packet in [
         TracePacket::PCSample {
@@ -222,7 +216,7 @@ fn decode_datatracepc_packet() {
         0b0011_1111,
         0b1111_1111,
     ];
-    let mut decoder = Decoder::new(pc, DecoderOptions::default());
+    let mut decoder = Decoder::new(pc, DecoderOptions { ignore_eof: false });
 
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
@@ -241,7 +235,7 @@ fn decode_datatraceaddress_packet() {
             0b0000_0011,
             0b0000_1111,
         ];
-    let mut decoder = Decoder::new(address, DecoderOptions::default());
+    let mut decoder = Decoder::new(address, DecoderOptions { ignore_eof: false });
 
     assert_eq!(
         decoder.singles().next().unwrap().unwrap(),
@@ -273,7 +267,7 @@ fn decode_datatracevalue_packet() {
         0b1010_1101,
         0b0000_0011,
     ];
-    let mut decoder = Decoder::new(payloads, DecoderOptions::default());
+    let mut decoder = Decoder::new(payloads, DecoderOptions { ignore_eof: false });
 
     for packet in [
         TracePacket::DataTraceValue {
