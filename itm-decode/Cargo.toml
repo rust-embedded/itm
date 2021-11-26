@@ -1,0 +1,20 @@
+[package]
+name = "itm-decode"
+version = "0.4.0"
+keywords = ["parse", "ARM", "ITM"]
+documentation = "https://docs.rs/itm"
+authors = [
+        "The Cortex-M Team <cortex-m@teams.rust-embedded.org>",
+        "Viktor Sonesten <v@tmplt.dev>",
+]
+edition = "2018"
+readme = "README.md"
+repository = "https://github.com/embedded-rust/itm"
+license = "MIT OR Apache-2.0"
+description = "A decoding tool for the ARM Cortex-M ITM/DWT packet protocol"
+homepage = "https://github.com/embedded-rust/itm"
+
+[dependencies]
+itm = { path = "../itm" }
+anyhow = "1.0"
+structopt = "0.3"

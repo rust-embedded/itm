@@ -14,7 +14,7 @@ This project is developed and maintained by the [Cortex-M team][team].
 ## How to install `itmdump`
 
 ```shell
-# Install `itmdump` tool
+# Install `itm-decode` tool
 $ cargo install itm-decode
 
 # Check installation
