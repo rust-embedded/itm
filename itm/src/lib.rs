@@ -48,7 +48,7 @@ pub enum TracePacket {
     /// corresponding ITM/DWT data packets. (Appendix D4.2.4)
     LocalTimestamp1 {
         /// Timestamp value.
-        ts: u64, // TODO u32
+        ts: u32,
 
         /// Indicates the relationship between the generation of `ts`
         /// and the corresponding ITM or DWT data packet.
@@ -578,7 +578,7 @@ where
                 Ok(TracePacket::LocalTimestamp1 {
                     data_relation: data_relation.clone(),
                     // MAGIC(27): c.f. Appendix D4.2.4
-                    ts: extract_timestamp(payload, 27),
+                    ts: extract_timestamp(payload, 27) as u32,
                 })
             }
             PacketStub::GlobalTimestamp1 => {

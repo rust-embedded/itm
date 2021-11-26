@@ -232,7 +232,7 @@ where
                     TracePacket::LocalTimestamp1 { ts, data_relation } => {
                         return Ok(TimestampedTracePackets {
                             timestamp: apply_lts(
-                                ts,
+                                ts.into(),
                                 data_relation,
                                 &mut self.current_baseline,
                                 &self.options,
@@ -398,14 +398,14 @@ mod timestamps {
             ) => {
                 (
                     true,
-                    calc_offset(gts.merge().unwrap() + lts, None, FREQ)
+                    calc_offset(gts.merge().unwrap() + (lts as u64), None, FREQ)
                         // XXX why are we 1ns off?
                         .sub(chrono::Duration::nanoseconds(1)),
                     data_relation,
                 )
             }
             (TracePacket::LocalTimestamp1 { ts, data_relation }, None) => {
-                (false, calc_offset(ts, None, FREQ), data_relation)
+                (false, calc_offset(ts.into(), None, FREQ), data_relation)
             }
             (TracePacket::LocalTimestamp2 { ts }, None) => (
                 false,
