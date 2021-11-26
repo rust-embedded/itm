@@ -401,27 +401,29 @@ where
         // `Read::read` reportedly reads in 32-byte chunks. Source:
         // <https://github.com/rust-embedded/itm/blob/3e4251b42aa2e4b05ae372c47c7b835b8acae6dc/src/lib.rs#L42>.
         let mut buffer: [u8; 32] = [0; 32];
-        match self.reader.read(&mut buffer) {
-            Ok(0) => {
-                if self.ignore_eof {
-                    return self.buffer_some();
+        loop {
+            match self.reader.read(&mut buffer) {
+                Ok(0) => {
+                    if self.ignore_eof {
+                        continue;
+                    }
+                    return Err(DecoderErrorInt::Eof);
                 }
-                Err(DecoderErrorInt::Eof)
-            }
-            Ok(n) => {
-                let mut bv = BitVec::<LocalBits, _>::from_vec(buffer[0..n].to_vec());
-                bv.reverse();
-                bv.append(&mut self.buffer);
-                self.buffer.append(&mut bv);
+                Ok(n) => {
+                    let mut bv = BitVec::<LocalBits, _>::from_vec(buffer[0..n].to_vec());
+                    bv.reverse();
+                    bv.append(&mut self.buffer);
+                    self.buffer.append(&mut bv);
 
-                Ok(())
-            }
-            Err(e) => {
-                // XXX any other errors we should retry on?
-                if e.kind() == std::io::ErrorKind::Interrupted {
-                    return self.buffer_some();
+                    return Ok(());
                 }
-                Err(e.into())
+                Err(e) => {
+                    // XXX any other errors we should retry on?
+                    if e.kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(e.into());
+                }
             }
         }
     }
@@ -429,12 +431,14 @@ where
     /// Pops a single bit from the buffer. Tries to buffer first if
     /// the buffer is empty.
     pub fn pop_bit(&mut self) -> Result<bool, DecoderErrorInt> {
-        match self.buffer.pop() {
-            None => {
-                self.buffer_some()?;
-                self.pop_bit()
+        loop {
+            match self.buffer.pop() {
+                None => {
+                    self.buffer_some()?;
+                    continue;
+                }
+                Some(bit) => return Ok(bit),
             }
-            Some(bit) => Ok(bit),
         }
     }
 
