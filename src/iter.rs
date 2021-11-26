@@ -167,10 +167,10 @@ where
     R: Read,
 {
     pub(super) fn new(decoder: &'a mut Decoder<R>, options: TimestampConfiguration) -> Self {
-        assert!(
-            options.lts_prescaler != LocalTimestampOptions::Disabled,
-            "local timestamps must be enabled"
-        );
+        if options.lts_prescaler == LocalTimestampOptions::Disabled {
+            unimplemented!("Generating approximate absolute timestamps from global timestamps alone is not yet supported");
+        }
+
         Self {
             current_baseline: options.baseline,
             decoder,
