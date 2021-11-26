@@ -2,8 +2,11 @@ use super::{
     Decoder, DecoderError, DecoderErrorInt, MalformedPacket, TimestampDataRelation, TracePacket,
 };
 
+pub use chrono;
 pub use cortex_m::peripheral::itm::LocalTimestampOptions;
 use std::io::Read;
+
+pub type DateTime = chrono::DateTime<chrono::Utc>;
 
 pub struct Singles<'a, R>
 where
@@ -39,10 +42,8 @@ where
     }
 }
 
-pub type DateTime = chrono::DateTime<chrono::Utc>;
-
 #[derive(Clone)]
-pub struct TimestampConfiguration {
+pub struct TimestampsConfiguration {
     /// Frequency of the ITM timestamp clock. Necessary to calculate
     /// the offset continuously added to [Self::baseline].
     pub clock_frequency: u32,
@@ -98,7 +99,7 @@ where
     R: Read,
 {
     decoder: &'a mut Decoder<R>,
-    options: TimestampConfiguration,
+    options: TimestampsConfiguration,
     current_baseline: DateTime,
 }
 
@@ -166,7 +167,7 @@ impl<'a, R> Timestamps<'a, R>
 where
     R: Read,
 {
-    pub(super) fn new(decoder: &'a mut Decoder<R>, options: TimestampConfiguration) -> Self {
+    pub(super) fn new(decoder: &'a mut Decoder<R>, options: TimestampsConfiguration) -> Self {
         if options.lts_prescaler == LocalTimestampOptions::Disabled {
             unimplemented!("Generating approximate absolute timestamps from global timestamps alone is not yet supported");
         }
@@ -180,7 +181,7 @@ where
 
     fn next_timestamped(
         &mut self,
-        options: TimestampConfiguration,
+        options: TimestampsConfiguration,
     ) -> Result<TimestampedTracePackets, DecoderErrorInt> {
         use std::ops::Add;
 
@@ -196,7 +197,7 @@ where
             lts: u64,
             data_relation: TimestampDataRelation,
             current_baseline: &mut DateTime,
-            options: &TimestampConfiguration,
+            options: &TimestampsConfiguration,
         ) -> Timestamp {
             let offset = calc_offset(lts, Some(options.lts_prescaler), options.clock_frequency);
             *current_baseline = current_baseline.add(offset);
@@ -207,7 +208,11 @@ where
             }
         }
 
-        fn apply_gts(gts: &Gts, current_baseline: &mut DateTime, options: &TimestampConfiguration) {
+        fn apply_gts(
+            gts: &Gts,
+            current_baseline: &mut DateTime,
+            options: &TimestampsConfiguration,
+        ) {
             if let Some(gts) = gts.merge() {
                 let offset = calc_offset(gts, None, options.clock_frequency);
                 *current_baseline = options.baseline.add(offset);
@@ -572,7 +577,7 @@ mod timestamps {
         }());
 
         let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
-        let mut it = decoder.timestamps(TimestampConfiguration {
+        let mut it = decoder.timestamps(TimestampsConfiguration {
             clock_frequency: FREQ,
             lts_prescaler: LocalTimestampOptions::Enabled,
             baseline: unsafe { BASELINE.unwrap() },

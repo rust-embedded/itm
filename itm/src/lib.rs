@@ -8,8 +8,8 @@
 #[deny(rustdoc::broken_intra_doc_links)]
 mod iter;
 pub use iter::{
-    LocalTimestampOptions, Singles, Timestamp, TimestampConfiguration, TimestampedTracePackets,
-    Timestamps,
+    chrono, LocalTimestampOptions, Singles, Timestamp, TimestampedTracePackets, Timestamps,
+    TimestampsConfiguration,
 };
 
 use std::convert::TryInto;
@@ -525,7 +525,7 @@ where
     }
 
     /// An iterator over a [Decoder] that produces [TimestampedTracePackets].
-    pub fn timestamps(&mut self, options: TimestampConfiguration) -> Timestamps<R> {
+    pub fn timestamps(&mut self, options: TimestampsConfiguration) -> Timestamps<R> {
         Timestamps::new(self, options)
     }
 
