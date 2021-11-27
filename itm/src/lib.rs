@@ -19,12 +19,14 @@
 //! target-side](TimestampedTracePackets::timestamp).
 //!
 //! Usage is simple:
-//! ```rust
-//! use std::fs::File;
+//! ```
 //! use itm::{Decoder, DecoderOptions};
 //!
-//! let file = File::open("some-file").unwrap();
-//! let mut decoder = Decoder::<File>::new(file, DecoderOptions { ignore_eof: false });
+//! // or a std::fs::File, or anything else that implements std::io::Read
+//! let stream: &[u8] = &[
+//!     // ...
+//! ];
+//! let mut decoder = Decoder::<&[u8]>::new(stream, DecoderOptions { ignore_eof: false });
 //! for packet in decoder.singles() {
 //!     // ...
 //! }
