@@ -1,10 +1,37 @@
+//! # `itm`
+//!
 //! A decoder for the ITM and DWT packet protocol as specifed in the
 //! [ARMv7-M architecture reference manual, Appendix
 //! D4](https://developer.arm.com/documentation/ddi0403/ed/). Any
 //! references in this code base refers to this document.
 //!
-//! *TODO*: fill this out before merge.
-
+//! Aside from covering the entirety of the protocol, this crate offers
+//! two iterators which reads data from the given [`Read`](std::io::Read)
+//! instance:
+//!
+//! - [`Singles`](Singles), which decodes each packet in the stream in sequence,
+//! yielding [`TracePacket`](TracePacket)s.
+//!
+//! - [`Timestamps`](Timestamps), which continuously decodes packets
+//! from the stream until a local timestamp is encountered, yielding a
+//! [`TimestampedTracePackets`](TimestampedTracePackets), which contains
+//! [an absolute timestamp of when the packets where generated
+//! target-side](TimestampedTracePackets::timestamp).
+//!
+//! Usage is simple:
+//! ```rust
+//! use std::fs::File;
+//! use itm::{Decoder, DecoderOptions};
+//!
+//! let file = File::open("some-file").unwrap();
+//! let mut decoder = Decoder::<File>::new(file, DecoderOptions { ignore_eof: false });
+//! for packet in decoder.singles() {
+//!     // ...
+//! }
+//! ```
+//!
+//! # Absolute/relative timestamping
+//! *TODO*
 #[deny(rustdoc::broken_intra_doc_links)]
 mod iter;
 pub use iter::{
@@ -227,6 +254,7 @@ pub enum TimestampDataRelation {
     UnknownAssocEventDelay,
 }
 
+/// Set of malformed [`TracePacket`](TracePacket)s that can occur during decode.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MalformedPacket {
@@ -344,10 +372,12 @@ enum HeaderVariant {
     Stub(PacketStub),
 }
 
+/// [`Decoder`](Decoder) configuration.
 pub struct DecoderOptions {
     /// Whether to keep reading after a (temporary) EOF condition. If
-    /// set and `next` is called on a decoder iterator, `next` will
-    /// never return if unless the EOF condition is eventually resolved.
+    /// set iteration is done over [`Singles`](Singles) or
+    /// [`Timestamps`](Timestamps), [`next`](Iterator::next) will never
+    /// return unless the EOF condition is eventually resolved.
     pub ignore_eof: bool,
 }
 
@@ -361,6 +391,7 @@ enum DecoderErrorInt {
     MalformedPacket(#[from] MalformedPacket),
 }
 
+/// Set of errors that can occur during decode.
 #[derive(Debug, thiserror::Error)]
 pub enum DecoderError {
     #[error("I/O error: {0}")]
@@ -503,22 +534,22 @@ where
         }
     }
 
-    /// Returns a reference to the underlying reader.
+    /// Returns a reference to the underlying [`Read`](Read).
     pub fn get_ref(&self) -> &R {
         &self.buffer.reader
     }
 
-    /// Returns a mutable reference to the underlying reader.
+    /// Returns a mutable reference to the underlying [`Read`](Read).
     pub fn get_mut(&mut self) -> &mut R {
         &mut self.buffer.reader
     }
 
-    /// An iterator over a [Decoder] that produces [TracePacket]s.
+    /// Returns an iterator over [`TracePacket`](TracePacket)s.
     pub fn singles(&mut self) -> Singles<R> {
         Singles::new(self)
     }
 
-    /// An iterator over a [Decoder] that produces [TimestampedTracePackets].
+    /// Returns an iterator over [`TimestampedTracePackets`](TimestampedTracePackets).
     pub fn timestamps(&mut self, options: TimestampsConfiguration) -> Timestamps<R> {
         Timestamps::new(self, options)
     }

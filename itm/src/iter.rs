@@ -8,6 +8,7 @@ use std::io::Read;
 
 pub type DateTime = chrono::DateTime<chrono::Utc>;
 
+/// Iterator that yield [`TracePacket`](TracePacket).
 pub struct Singles<'a, R>
 where
     R: Read,
@@ -42,41 +43,51 @@ where
     }
 }
 
+/// [`Timestamps`](Timestamps) configuration.
 #[derive(Clone)]
 pub struct TimestampsConfiguration {
-    /// Frequency of the ITM timestamp clock. Necessary to calculate
-    /// the offset continuously added to [Self::baseline].
+    /// Frequency of the ITM timestamp clock. Necessary to calculate a
+    /// relative timestamp from global and local timestamp packets.
     pub clock_frequency: u32,
 
     /// Prescaler used for the ITM timestamp clock. Necessary to
-    /// calculate the offset continuously added to [Self::baseline].
+    /// calculate a relative timestamp from global and local timestamp
+    /// packets.
     pub lts_prescaler: LocalTimestampOptions,
 
-    /// Absolute timestamp on which to continuously sum global and local
-    /// timestamps. This timestamp should ideally be the instant the
-    /// target's global timestamp clock is reset to zero.
+    /// Absolute timestamp on which to apply relative timestamps. This
+    /// timestamp should ideally be the instant the target's global
+    /// timestamp clock is reset to zero.
     pub baseline: DateTime,
 
-    /// When set, pushes [MalformedPacket]s to
-    /// [TimestampedTracePackets::malformed_packets] instead of
-    /// returning it as an [Result::Err].
+    /// When set, pushes [`MalformedPacket`](MalformedPacket)s to
+    /// [`TimestampedTracePackets::malformed_packets`](TimestampedTracePackets::malformed_packets)
+    /// instead of returning it as an `Result::Err`.
     pub expect_malformed: bool,
 }
 
-/// A set of timestamped trace packets.
+/// A set of timestamped [`TracePacket`](TracePacket)s.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimestampedTracePackets {
-    /// Timestamp of [Self::packets] and [Self::malformed_packets]
+    /// Timestamp of [`packets`](Self::packets) and
+    /// [`malformed_packets`](Self::malformed_packets).
     pub timestamp: Timestamp,
+
+    /// Packets that the target generated during
+    /// [`timestamp`](Self::timestamp).
     pub packets: Vec<TracePacket>,
+
+    /// Malformed packets that the target generated during
+    /// [`timestamp`](Self::timestamp).
     pub malformed_packets: Vec<MalformedPacket>,
 
-    /// The number of [TracePacket]s consumed to generate this
-    /// structure.
+    /// The number of [`TracePacket`](TracePacket)s consumed to generate
+    /// this structure.
     pub consumed_packets: usize,
 }
 
+/// Absolute timestamp with associated [data relation](TimestampDataRelation).
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Timestamp {
@@ -94,6 +105,7 @@ impl PartialOrd for Timestamp {
     }
 }
 
+/// Iterator that yield [`TimestampedTracePackets`](TimestampedTracePackets).
 pub struct Timestamps<'a, R>
 where
     R: Read,
