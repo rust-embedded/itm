@@ -31,7 +31,7 @@ struct Opt {
 fn main() -> Result<()> {
     let opt = Opt::from_args();
 
-    let file = File::open(opt.file).context("failed to open file")?;
+    let file = File::open(&opt.file).context("failed to open file")?;
     let mut decoder = Decoder::<File>::new(
         file,
         DecoderOptions {
@@ -39,39 +39,44 @@ fn main() -> Result<()> {
         },
     );
 
-    if opt.timestamps {
-        let mut it = decoder.timestamps(TimestampsConfiguration {
-            clock_frequency: opt.freq,
-            lts_prescaler: match opt.prescaler {
-                None | Some(1) => LocalTimestampOptions::Enabled,
-                Some(4) => LocalTimestampOptions::EnabledDiv4,
-                Some(16) => LocalTimestampOptions::EnabledDiv16,
-                Some(64) => LocalTimestampOptions::EnabledDiv64,
-                Some(n) => bail!(
-                    "{} is not a valid prescaler; valid prescalers are: 4, 16, 64.",
-                    n
-                ),
-            },
-            baseline: chrono::offset::Utc::now(),
-            expect_malformed: opt.expect_malformed,
-        });
-
-        loop {
-            match it.next() {
-                None => return Ok(()), // EOF
-                Some(Err(e)) => return Err(e).context("Decoder error"),
-                Some(Ok(packets)) => println!("{:?}", packets),
+    match opt {
+        Opt {
+            timestamps: true,
+            prescaler,
+            freq,
+            expect_malformed,
+            ..
+        } => {
+            for packets in decoder.timestamps(TimestampsConfiguration {
+                clock_frequency: freq,
+                lts_prescaler: match prescaler {
+                    None | Some(1) => LocalTimestampOptions::Enabled,
+                    Some(4) => LocalTimestampOptions::EnabledDiv4,
+                    Some(16) => LocalTimestampOptions::EnabledDiv16,
+                    Some(64) => LocalTimestampOptions::EnabledDiv64,
+                    Some(n) => bail!(
+                        "{} is not a valid prescaler; valid prescalers are: 4, 16, 64.",
+                        n
+                    ),
+                },
+                baseline: chrono::offset::Utc::now(),
+                expect_malformed: expect_malformed,
+            }) {
+                match packets {
+                    Err(e) => return Err(e).context("Decoder error"),
+                    Ok(packets) => println!("{:?}", packets),
+                }
             }
         }
-    } else {
-        let mut it = decoder.singles();
-
-        loop {
-            match it.next() {
-                None => return Ok(()), // EOF
-                Some(Err(e)) => return Err(e).context("Decoder error"),
-                Some(Ok(packet)) => println!("{:?}", packet),
+        _ => {
+            for packet in decoder.singles() {
+                match packet {
+                    Err(e) => return Err(e).context("Decoder error"),
+                    Ok(packet) => println!("{:?}", packet),
+                }
             }
         }
     }
+
+    Ok(())
 }
