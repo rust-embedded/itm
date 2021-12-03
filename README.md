@@ -5,8 +5,6 @@
 
 > A Rust crate and tool `itm-decode` to parse and dump ARM [ITM] packets.
 
-This project is developed and maintained by the [Cortex-M team][team].
-
 [ITM]: https://developer.arm.com/documentation/ddi0403/ed/, Appendix D4
 
 ## [Documentation](https://docs.rs/crate/itm)
