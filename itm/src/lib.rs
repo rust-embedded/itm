@@ -549,6 +549,12 @@ where
     }
 
     /// Returns an iterator over [`TimestampedTracePackets`](TimestampedTracePackets).
+    ///
+    /// # Panics
+    ///
+    /// This iterator constuctor will panic if
+    /// [`options.lts_prescaler`](TimestampsConfiguration::lts_prescaler)
+    /// is [`Disabled`](LocalTimestampOptions::Disabled).
     pub fn timestamps(&mut self, options: TimestampsConfiguration) -> Timestamps<R> {
         Timestamps::new(self, options)
     }
