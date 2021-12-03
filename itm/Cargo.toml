@@ -9,10 +9,9 @@ authors = [
 ]
 edition = "2018"
 readme = "README.md"
-repository = "https://github.com/embedded-rust/itm"
+repository = "https://github.com/rtic-scope/itm"
 license = "MIT OR Apache-2.0"
 description = "A decoding library for the ARM Cortex-M ITM/DWT packet protocol"
-homepage = "https://github.com/embedded-rust/itm"
 
 [dependencies]
 bitmatch = "0.1.1"
