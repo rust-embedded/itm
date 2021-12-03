@@ -15,8 +15,8 @@
 //! - [`Timestamps`](Timestamps), which continuously decodes packets
 //! from the stream until a local timestamp is encountered, yielding a
 //! [`TimestampedTracePackets`](TimestampedTracePackets), which contains
-//! [an absolute timestamp of when the packets where generated
-//! target-side](TimestampedTracePackets::timestamp).
+//! [a timestamp relative to target reset of when the packets where
+//! generated target-side](TimestampedTracePackets::timestamp).
 //!
 //! Usage is simple:
 //! ```
@@ -31,9 +31,6 @@
 //!     // ...
 //! }
 //! ```
-//!
-//! # Absolute/relative timestamping
-//! *TODO*
 #[deny(rustdoc::broken_intra_doc_links)]
 mod iter;
 pub use iter::{

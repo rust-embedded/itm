@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use itm::{chrono, Decoder, DecoderOptions, LocalTimestampOptions, TimestampsConfiguration};
+use itm::{Decoder, DecoderOptions, LocalTimestampOptions, TimestampsConfiguration};
 use std::fs::File;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -59,7 +59,6 @@ fn main() -> Result<()> {
                         n
                     ),
                 },
-                baseline: chrono::offset::Utc::now(),
                 expect_malformed: expect_malformed,
             }) {
                 match packets {
