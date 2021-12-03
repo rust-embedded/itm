@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [v0.4.0] - 2021-12-03
+
+### Changed
+
+The library has been completely reimplemented, following the development of [`itm-decode`](https://github.com/rtic-scope/itm-decode) (now archived).
+This new implementation offers, in addition to the previous implementation, an `Iterator`-based design, more granular enums, synchronization packet support, and timestamp generation of trace packets.
+
+The (missing) `itm-dump` binary has been replaced by `itm-decode` shipped in this repository.
+
+Related topics: https://github.com/rust-embedded/itm/pull/41, https://github.com/rust-embedded/wg/pull/589.
+
 ## [v0.3.1] - 2018-07-04
 
 ### Fixed
@@ -66,8 +77,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `itmdump` tool that parses instrumentation packets from the stimulus port 0
   and dumps the payload to `stdout`.
 
-[Unreleased]: https://github.com/japaric/itm/compare/v0.3.0...HEAD
-[v0.3.0]: https://github.com/japaric/itm/compare/v0.2.1...v0.3.0
-[v0.2.1]: https://github.com/japaric/itm/compare/v0.2.0...v0.2.1
-[v0.2.0]: https://github.com/japaric/itm/compare/v0.1.1...v0.2.0
-[v0.1.1]: https://github.com/japaric/itm/compare/v0.1.0...v0.1.1
+[Unreleased]: https://github.com/rtic-scope/itm/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/rtic-scope/itm/compare/v0.3.0...v0.4.0
+[v0.3.0]: https://github.com/rtic-scope/itm/compare/v0.2.1...v0.3.0
+[v0.2.1]: https://github.com/rtic-scope/itm/compare/v0.2.0...v0.2.1
+[v0.2.0]: https://github.com/rtic-scope/itm/compare/v0.1.1...v0.2.0
+[v0.1.1]: https://github.com/rtic-scope/itm/compare/v0.1.0...v0.1.1
