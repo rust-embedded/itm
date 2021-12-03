@@ -44,12 +44,10 @@ use std::io::Read;
 use bitmatch::bitmatch;
 use bitvec::prelude::*;
 pub use cortex_m::peripheral::scb::VectActive;
-#[cfg(feature = "serde")]
-use serde_crate::{Deserialize, Serialize};
 
 /// The set of valid packet types that can be decoded.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TracePacket {
     // Synchronization packet category (Appendix D4, p. 782)
     /// A synchronization packet is a unique pattern in the bitstream.
@@ -193,7 +191,7 @@ pub enum TracePacket {
 
 /// Denotes the action taken by the processor by a given exception. (Table D4-6)
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ExceptionAction {
     /// Exception was entered.
     Entered,
@@ -207,7 +205,7 @@ pub enum ExceptionAction {
 
 /// Denotes the type of memory access.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MemoryAccessType {
     /// Memory was read.
     Read,
@@ -220,7 +218,7 @@ pub enum MemoryAccessType {
 /// timestamp packet and the corresponding ITM or DWT data packet.
 /// (Appendix D4.2.4)
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TimestampDataRelation {
     /// The local timestamp value is synchronous to the corresponding
     /// ITM or DWT data. The value in the TS field is the timestamp
@@ -255,7 +253,7 @@ pub enum TimestampDataRelation {
 
 /// Set of malformed [`TracePacket`](TracePacket)s that can occur during decode.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MalformedPacket {
     /// Header is invalid and cannot be decoded.
     #[error("Header is invalid and cannot be decoded: {}", format!("{:#b}", .0))]

@@ -62,7 +62,7 @@ pub struct TimestampsConfiguration {
 
 /// A set of timestamped [`TracePacket`](TracePacket)s.
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TimestampedTracePackets {
     /// Timestamp of [`packets`](Self::packets) and
     /// [`malformed_packets`](Self::malformed_packets).
@@ -83,7 +83,7 @@ pub struct TimestampedTracePackets {
 
 /// Absolute timestamp with associated [data relation](TimestampDataRelation).
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Timestamp {
     /// Offset in time from target reset that this timestamp denotes.
     pub offset: Duration,
