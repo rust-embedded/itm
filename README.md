@@ -9,7 +9,7 @@
 
 ## [Documentation](https://docs.rs/crate/itm)
 
-## How to install `itmdump`
+## How to install `itm-decode`
 
 ```shell
 # Install `itm-decode` tool
