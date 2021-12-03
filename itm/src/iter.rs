@@ -2,9 +2,10 @@ use super::{
     Decoder, DecoderError, DecoderErrorInt, MalformedPacket, TimestampDataRelation, TracePacket,
 };
 
-pub use chrono;
-pub use cortex_m::peripheral::itm::LocalTimestampOptions;
 use std::io::Read;
+use std::time::Duration;
+
+pub use cortex_m::peripheral::itm::LocalTimestampOptions;
 
 /// Iterator that yield [`TracePacket`](TracePacket).
 pub struct Singles<'a, R>
@@ -85,7 +86,7 @@ pub struct TimestampedTracePackets {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Timestamp {
     /// Offset in time from target reset that this timestamp denotes.
-    pub offset: chrono::Duration,
+    pub offset: Duration,
 
     /// In what manner this timestamp relates to the associated data
     /// packets.
@@ -106,7 +107,7 @@ where
 {
     decoder: &'a mut Decoder<R>,
     options: TimestampsConfiguration,
-    current_offset: chrono::Duration,
+    current_offset: Duration,
     gts: Gts,
 }
 
@@ -187,7 +188,7 @@ where
         }
 
         Self {
-            current_offset: chrono::Duration::nanoseconds(0),
+            current_offset: Duration::from_nanos(0),
             decoder,
             options,
             gts: Gts {
@@ -210,7 +211,7 @@ where
         fn apply_lts(
             lts: u64,
             data_relation: TimestampDataRelation,
-            current_offset: &mut chrono::Duration,
+            current_offset: &mut Duration,
             options: &TimestampsConfiguration,
         ) -> Timestamp {
             let offset = calc_offset(lts, Some(options.lts_prescaler), options.clock_frequency);
@@ -222,11 +223,7 @@ where
             }
         }
 
-        fn apply_gts(
-            gts: &Gts,
-            current_offset: &mut chrono::Duration,
-            options: &TimestampsConfiguration,
-        ) {
+        fn apply_gts(gts: &Gts, current_offset: &mut Duration, options: &TimestampsConfiguration) {
             if let Some(gts) = gts.merge() {
                 let offset = calc_offset(gts, None, options.clock_frequency);
                 *current_offset = offset;
@@ -323,7 +320,7 @@ where
     }
 }
 
-fn calc_offset(ts: u64, prescaler: Option<LocalTimestampOptions>, freq: u32) -> chrono::Duration {
+fn calc_offset(ts: u64, prescaler: Option<LocalTimestampOptions>, freq: u32) -> Duration {
     let prescale = match prescaler {
         None | Some(LocalTimestampOptions::Enabled) => 1,
         Some(LocalTimestampOptions::EnabledDiv4) => 4,
@@ -336,7 +333,7 @@ fn calc_offset(ts: u64, prescaler: Option<LocalTimestampOptions>, freq: u32) -> 
 
     // NOTE(ceil) we rount up so as to not report an event before it
     // occurs on hardware.
-    chrono::Duration::nanoseconds((seconds * 1e9).ceil() as i64)
+    Duration::from_nanos((seconds * 1e9).ceil() as u64)
 }
 
 #[cfg(test)]
@@ -393,14 +390,14 @@ mod timestamp_utils {
     fn offset() {
         assert_eq!(
             calc_offset(1000, Some(LocalTimestampOptions::EnabledDiv4), 16_000_000),
-            chrono::Duration::microseconds(250),
+            Duration::from_micros(250),
         );
     }
 }
 
 #[cfg(test)]
 mod timestamps {
-    use super::{calc_offset, Gts};
+    use super::{calc_offset, Duration, Gts};
     use crate::*;
     use std::ops::Add;
 
@@ -411,7 +408,7 @@ mod timestamps {
     fn outer_calc_offset(
         lts: TracePacket,
         gts: Option<Gts>,
-        offset_sum: &mut chrono::Duration,
+        offset_sum: &mut Duration,
     ) -> Timestamp {
         let (reset, offset, data_relation) = match (lts, gts) {
             (
@@ -423,7 +420,7 @@ mod timestamps {
             ) => (
                 true,
                 calc_offset(gts.merge().unwrap(), None, FREQ)
-                    .checked_add(&calc_offset(lts.into(), None, FREQ))
+                    .checked_add(calc_offset(lts.into(), None, FREQ))
                     .unwrap(),
                 data_relation,
             ),
@@ -559,7 +556,7 @@ mod timestamps {
         ];
 
         let timestamps = {
-            let mut offset_sum = chrono::Duration::nanoseconds(0);
+            let mut offset_sum = Duration::from_nanos(0);
             let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
             let mut it = decoder.singles();
             [
@@ -645,7 +642,7 @@ mod timestamps {
     }
 
     /// Test cases where a GTS2 applied to two GTS1; 64-bit GTS2; and
-    /// compares timestamps to precalculated [chrono::Duration] offsets.
+    /// compares timestamps to precalculated [Duration] offsets.
     #[test]
     fn gts_compression() {
         #[rustfmt::skip]
@@ -685,7 +682,7 @@ mod timestamps {
         ];
 
         let timestamps = {
-            let mut offset_sum = chrono::Duration::nanoseconds(0);
+            let mut offset_sum = Duration::from_nanos(0);
             let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
             let mut it = decoder.singles();
             #[allow(unused_assignments)]
@@ -697,7 +694,7 @@ mod timestamps {
 
                         outer_calc_offset(lts2, None, &mut offset_sum)
                     },
-                    chrono::Duration::nanoseconds(375),
+                    Duration::from_nanos(375),
                 ),
                 (
                     {
@@ -708,7 +705,7 @@ mod timestamps {
 
                         outer_calc_offset(lts2, gts.clone(), &mut offset_sum)
                     },
-                    chrono::Duration::nanoseconds(4194304438),
+                    Duration::from_nanos(4194304438),
                 ),
                 (
                     {
@@ -724,7 +721,7 @@ mod timestamps {
 
                         outer_calc_offset(lts2, gts, &mut offset_sum)
                     },
-                    chrono::Duration::nanoseconds(4194312313),
+                    Duration::from_nanos(4194312313),
                 ),
             ]
         };

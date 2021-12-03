@@ -34,7 +34,7 @@
 #[deny(rustdoc::broken_intra_doc_links)]
 mod iter;
 pub use iter::{
-    chrono, LocalTimestampOptions, Singles, Timestamp, TimestampedTracePackets, Timestamps,
+    LocalTimestampOptions, Singles, Timestamp, TimestampedTracePackets, Timestamps,
     TimestampsConfiguration,
 };
 

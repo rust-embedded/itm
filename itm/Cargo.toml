@@ -17,7 +17,6 @@ description = "A decoding library for the ARM Cortex-M ITM/DWT packet protocol"
 bitmatch = "0.1.1"
 bitvec = "0.22"
 thiserror = "1"
-chrono = "0.4"
 
 [dependencies.serde]
 version = "1"
