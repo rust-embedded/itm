@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 
-- `serde` derivation and build with `--features serde`. (#6)
+- `serde` derivation and build with `--features serde`.
 
 ## [v0.4.0] - 2021-12-03
 
