@@ -541,19 +541,22 @@ where
         &mut self.buffer.reader
     }
 
-    /// Returns an iterator over [`TracePacket`](TracePacket)s.
-    pub fn singles(&mut self) -> Singles<R> {
+    /// Returns an iterator over [`TracePacket`](TracePacket)s. Consumes
+    /// the [`Decoder`](Decoder).
+    pub fn singles(self) -> Singles<R> {
         Singles::new(self)
     }
 
-    /// Returns an iterator over [`TimestampedTracePackets`](TimestampedTracePackets).
+    /// Returns an iterator over
+    /// [`TimestampedTracePackets`](TimestampedTracePackets). Consumes
+    /// the [`Decoder`](Decoder).
     ///
     /// # Panics
     ///
     /// This iterator constuctor will panic if
     /// [`options.lts_prescaler`](TimestampsConfiguration::lts_prescaler)
     /// is [`Disabled`](LocalTimestampOptions::Disabled).
-    pub fn timestamps(&mut self, options: TimestampsConfiguration) -> Timestamps<R> {
+    pub fn timestamps(self, options: TimestampsConfiguration) -> Timestamps<R> {
         Timestamps::new(self, options)
     }
 

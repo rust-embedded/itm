@@ -32,7 +32,7 @@ fn main() -> Result<()> {
     let opt = Opt::from_args();
 
     let file = File::open(&opt.file).context("failed to open file")?;
-    let mut decoder = Decoder::<File>::new(
+    let decoder = Decoder::<File>::new(
         file,
         DecoderOptions {
             ignore_eof: opt.ignore_eof,

@@ -8,23 +8,23 @@ use std::time::Duration;
 pub use cortex_m::peripheral::itm::LocalTimestampOptions;
 
 /// Iterator that yield [`TracePacket`](TracePacket).
-pub struct Singles<'a, R>
+pub struct Singles<R>
 where
     R: Read,
 {
-    decoder: &'a mut Decoder<R>,
+    decoder: Decoder<R>,
 }
 
-impl<'a, R> Singles<'a, R>
+impl<R> Singles<R>
 where
     R: Read,
 {
-    pub(super) fn new(decoder: &'a mut Decoder<R>) -> Self {
+    pub(super) fn new(decoder: Decoder<R>) -> Self {
         Self { decoder }
     }
 }
 
-impl<'a, R> Iterator for Singles<'a, R>
+impl<R> Iterator for Singles<R>
 where
     R: Read,
 {
@@ -101,11 +101,11 @@ impl PartialOrd for Timestamp {
 }
 
 /// Iterator that yield [`TimestampedTracePackets`](TimestampedTracePackets).
-pub struct Timestamps<'a, R>
+pub struct Timestamps<R>
 where
     R: Read,
 {
-    decoder: &'a mut Decoder<R>,
+    decoder: Decoder<R>,
     options: TimestampsConfiguration,
     current_offset: Duration,
     gts: Gts,
@@ -178,11 +178,11 @@ impl Gts {
     }
 }
 
-impl<'a, R> Timestamps<'a, R>
+impl<R> Timestamps<R>
 where
     R: Read,
 {
-    pub(super) fn new(decoder: &'a mut Decoder<R>, options: TimestampsConfiguration) -> Self {
+    pub(super) fn new(decoder: Decoder<R>, options: TimestampsConfiguration) -> Self {
         if options.lts_prescaler == LocalTimestampOptions::Disabled {
             unimplemented!("Generating approximate absolute timestamps from global timestamps alone is not yet supported");
         }
@@ -302,7 +302,7 @@ where
     }
 }
 
-impl<'a, R> Iterator for Timestamps<'a, R>
+impl<R> Iterator for Timestamps<R>
 where
     R: Read,
 {
@@ -557,7 +557,7 @@ mod timestamps {
 
         let timestamps = {
             let mut offset_sum = Duration::from_nanos(0);
-            let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+            let decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
             let mut it = decoder.singles();
             [
                 {
@@ -591,7 +591,7 @@ mod timestamps {
 
         assert!(is_sorted_increasing(&timestamps));
 
-        let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+        let decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
         let mut it = decoder.timestamps(TimestampsConfiguration {
             clock_frequency: FREQ,
             lts_prescaler: LocalTimestampOptions::Enabled,
@@ -683,7 +683,7 @@ mod timestamps {
 
         let timestamps = {
             let mut offset_sum = Duration::from_nanos(0);
-            let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+            let decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
             let mut it = decoder.singles();
             #[allow(unused_assignments)]
             let mut gts: Option<Gts> = None;
@@ -733,7 +733,7 @@ mod timestamps {
                 .collect::<Vec<Timestamp>>()
         ));
 
-        let mut decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
+        let decoder = Decoder::new(stream.clone(), DecoderOptions { ignore_eof: false });
         let mut it = decoder.timestamps(TimestampsConfiguration {
             clock_frequency: FREQ,
             lts_prescaler: LocalTimestampOptions::Enabled,

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `Decoder::singles` and `Decoder::timestamps` now consume the parent `Decoder` on iterator constuction.
+
 ### Fixed
 
 - `serde` derivation and build with `--features serde`.
