@@ -3,6 +3,17 @@
 
 # `itm`
 
+**This crate is now deprecated, please refer to [rtic-scope/itm](https://github.com/rtic-scope/itm) instead.**
+
+**See [#589] for details.**
+
+**Versions of `itm` on crates.io after 0.4 refer to the rtic-scope repository
+and include a new itm-decode command-line utility.**
+
+[#589]: https://github.com/rust-embedded/wg/pull/589
+
+**Original README:**
+
 > A Rust crate and tool `itmdump` to parse and dump ARM [ITM] packets.
 
 This project is developed and maintained by the [Cortex-M team][team].
